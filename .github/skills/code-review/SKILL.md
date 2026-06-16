@@ -23,9 +23,9 @@ Present issues in a table:
 
 | # | Severity | File | Description | Code |
 |---|----------|------|-------------|------|
-| 1 | 🔴 High | `src/example.rs:42` | Description of the issue | `snippet` |
-| 2 | 🟡 Medium | `src/other.rs:10` | Description of the issue | `snippet` |
-| 3 | 🟢 Low | `src/lib.rs:5` | Description of the issue | `snippet` |
+| 1 | 🔴 High | `drivers/tmpdrv/device.cpp:42` | Description of the issue | `snippet` |
+| 2 | 🟡 Medium | `drivers/tmpdrv/other.cpp:42` | Description of the issue | `snippet` |
+| 3 | 🟢 Low | `drivers/tmpdrv/util.cpp:5` | Description of the issue | `snippet` |
 
 Severity levels:
 - 🔴 **High** — Design flaws, incorrect abstractions, safety violations, data loss risks
@@ -36,9 +36,8 @@ If there are no issues, say so explicitly.
 
 ## Review rules
 
-- Do NOT flag formatting, style, or compilation errors — `cargo fmt`, `cargo clippy`, and CI handle those.
 - DO focus on **design**: Is the abstraction correct? Does the change fit the existing architecture? Are there better patterns?
-- DO evaluate **concurrency correctness** — especially around Embassy async patterns, `Signal`/`Channel` usage, and mutex interactions.
-- DO check that `#[cfg(feature = "...")]` gating is correct when code uses embassy, defmt, or log dependencies.
+- DO evaluate **concurrency correctness** — especially around critical sections and power states.
 - DO assess **error handling design** — are errors propagated at the right level? Is the error type appropriate?
-- DO consider **no_std constraints** — no heap allocation without `heapless`, no `std` types in non-test code.
+- DO check formatting against WDF standards.
+- DO check that all required PNP functions are implemented.
