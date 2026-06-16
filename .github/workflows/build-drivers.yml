@@ -19,96 +19,40 @@ jobs:
     steps:
       - name: Checkout Code
         uses: actions/checkout@v6
-        with:
-          fetch-depth: 0
 
       - name: Add MSBuild to PATH
         uses: microsoft/setup-msbuild@v2
         with:
           msbuild-architecture: x64
 
-      - name: Detect Changed Driver Projects
-        id: detect
+      - name: Restore All Driver Projects
         shell: pwsh
         run: |
-          $baseRef = "${{ github.event.pull_request.base.ref }}"
-          git fetch --no-tags --prune --depth=1 origin $baseRef
-
-          $changedFiles = git diff --name-only "origin/$baseRef...HEAD" |
-            ForEach-Object { $_.Replace('\\', '/') } |
-            Where-Object { $_ -like 'drivers/*' }
-
-          if (-not $changedFiles) {
-            Write-Host "No changed files under drivers/."
-            "count=0" >> $env:GITHUB_OUTPUT
-            "projects=" >> $env:GITHUB_OUTPUT
-            exit 0
+          $projects = Get-ChildItem -Path drivers -Recurse -Filter *.vcxproj | Sort-Object FullName
+          if (-not $projects) {
+            throw "No .vcxproj files were found under drivers/."
           }
-
-          $repoRoot = (Resolve-Path '.').Path.Replace('\\', '/')
-          $allProjects = Get-ChildItem -Path drivers -Recurse -Filter *.vcxproj | Sort-Object FullName
-          $selectedProjects = New-Object System.Collections.Generic.List[string]
-
-          foreach ($project in $allProjects) {
-            $projectDir = $project.Directory.FullName.Replace('\\', '/')
-            $projectDirRelative = $projectDir.Substring($repoRoot.Length + 1)
-
-            $hasChanges = $changedFiles | Where-Object {
-              $_ -eq $projectDirRelative -or $_.StartsWith("$projectDirRelative/")
-            }
-
-            if ($hasChanges) {
-              $selectedProjects.Add($project.FullName)
-            }
-          }
-
-          if ($selectedProjects.Count -eq 0) {
-            Write-Host "No changed projects found under drivers/."
-            "count=0" >> $env:GITHUB_OUTPUT
-            "projects=" >> $env:GITHUB_OUTPUT
-            exit 0
-          }
-
-          Write-Host "Changed projects:" 
-          $selectedProjects | ForEach-Object { Write-Host "- $_" }
-
-          "count=$($selectedProjects.Count)" >> $env:GITHUB_OUTPUT
-          "projects<<EOF" >> $env:GITHUB_OUTPUT
-          $selectedProjects | ForEach-Object { $_ >> $env:GITHUB_OUTPUT }
-          "EOF" >> $env:GITHUB_OUTPUT
-
-      - name: Restore Changed Driver Projects
-        if: ${{ steps.detect.outputs.count != '0' }}
-        shell: pwsh
-        run: |
-          $projects = @"
-          ${{ steps.detect.outputs.projects }}
-          "@ -split "`r?`n" |
-            ForEach-Object { $_.Trim() } |
-            Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
 
           foreach ($project in $projects) {
-            Write-Host "Restoring $project"
-            nuget restore $project -ConfigFile $env:APPDATA\NuGet\NuGet.Config
+            Write-Host "Restoring $($project.FullName)"
+            nuget restore $project.FullName -ConfigFile $env:APPDATA\NuGet\NuGet.Config
           }
 
-      - name: Build Changed Driver Projects
-        if: ${{ steps.detect.outputs.count != '0' }}
+      - name: Build All Driver Projects
         shell: pwsh
         run: |
-          $projects = @"
-          ${{ steps.detect.outputs.projects }}
-          "@ -split "`r?`n" |
-            ForEach-Object { $_.Trim() } |
-            Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+          $projects = Get-ChildItem -Path drivers -Recurse -Filter *.vcxproj | Sort-Object FullName
+          if (-not $projects) {
+            throw "No .vcxproj files were found under drivers/."
+          }
 
           foreach ($project in $projects) {
-            Write-Host "Building $project"
-            msbuild $project /p:Configuration=Release /p:Platform=ARM64 /p:WarningLevel=4
+            Write-Host "Building $($project.FullName)"
+            msbuild $project.FullName /p:Configuration=Release /p:Platform=ARM64 /p:WarningLevel=4
           }
 
       - name: Upload Driver Build Artifacts
-        if: ${{ always() && steps.detect.outputs.count != '0' }}
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: drivers-ARM64-Release
