@@ -1,63 +1,49 @@
-# embedded-rust-template
-Template repository for Embedded Rust development
+# Windows ODP Drivers
+This repository contains Windows drivers that demonstrate and enable Open Device Platform (ODP) scenarios.
 
-## Customizing This Template
+## Code Organization
+Code is organized by platform under the drivers directory.
+Place platform-specific drivers in their platform folder, and place shared drivers in a common folder when applicable.
 
-### Changing the Target Architecture
+## GitHub Workflows
 
-This template is configured for `thumbv8m.main-none-eabihf`, by default, but you can modify it for other targets (i.e. `aarch64-unknown-none`):
+`.github/workflows/build-drivers.yml` - Builds all drivers and publishes build artifacts.
 
-1. **VSCode Settings**: Update the target in `.vscode/settings.json`:
-   ```json
-   "rust-analyzer.cargo.target": "your-target-architecture"
-   ```
+## Compiling Code Locally
+Build drivers locally with MSBuild from an Enterprise WDK (EWDK) command prompt.
 
+### 1. Get the EWDK
+1. Open the Microsoft WDK download page and download the Enterprise WDK ISO that matches your target SDK/WDK release.
+2. Mount the ISO in Windows Explorer.
+3. Open the mounted drive and run LaunchBuildEnv.cmd.
+4. In the build environment prompt, go to your repo root:
 
-This configuration ensures that:
-- Only the specified target architecture is analyzed, not the host platform
-- Code is checked against the no_std environment
+   `cd /d D:\git\odp-windows-drivers`
 
-To temporarily analyze code for the host platform instead, you can remove the `rust-analyzer.cargo.target` setting.
+Notes:
+- Build from the EWDK prompt so INCLUDE, LIB, PATH, and toolchain variables are already configured.
+- If your EWDK shell opens in x86 mode, switch to the x64 build environment before compiling drivers.
 
-2. **GitHub Workflows**: Modify the target in two workflow files:
-   - `.github/workflows/nostd.yml`: Update the targets in the matrix:
-     ```yaml
-     matrix:
-       target: [your-target-architecture]
-     ```
-   - `.github/workflows/check.yml`: If there are any target-specific checks, update them accordingly.
+### 2. Restore NuGet packages
+Run restore for each project before building:
 
-3. **Cargo Configuration**: If needed, you can add target-specific configuration in a `.cargo/config.toml` file.
+   `nuget restore drivers\qemu\pl061gpio\pl061gpio.vcxproj -ConfigFile %APPDATA%\NuGet\NuGet.Config`
 
-### Converting from Binary to Library
+### 3. Build each driver project
+Build using the same configuration used by CI (Release + ARM64):
 
-To convert this project from a binary to a library:
+   `msbuild drivers\qemu\pl061gpio\pl061gpio.vcxproj /p:Configuration=Release /p:Platform=ARM64 /p:WarningLevel=4`
 
-1. **Cargo.toml**: Update your project structure:
-   ```toml
-   [lib]
-   name = "your_library_name"
-   ```
+### 4. Optional: Build all driver vcxproj files recursively
+If new drivers are added, you can build all project files under drivers in one loop from the EWDK prompt:
 
-2. **Directory Structure**:
-   - For a library, ensure you have a `src/lib.rs` file instead of `src/main.rs`
-   - Move your code from `main.rs` to `lib.rs` and adjust as needed
-
-3. **No-std Configuration**: If you're creating a no-std library, ensure you have:
-   ```rust
-   // In lib.rs
-   #![cfg_attr(target_os = "none", no_std)]
-   // Add other attributes as needed
-   ```
-
-### Project Dependencies
-
-Update the dependencies in `Cargo.toml` based on your target platform:
-
-```toml
-[dependencies]
-# Common dependencies for all targets
-
-[target.'cfg(target_os = "none")'.dependencies]
-# Dependencies for no-std targets
 ```
+   for /r drivers %F in (*.vcxproj) do (
+     nuget restore "%F" -ConfigFile %APPDATA%\NuGet\NuGet.Config
+     msbuild "%F" /p:Configuration=Release /p:Platform=ARM64 /p:WarningLevel=4
+   )
+```
+
+### 5. Build output
+Driver binaries (.sys) are generated in each project output folder under drivers.
+
