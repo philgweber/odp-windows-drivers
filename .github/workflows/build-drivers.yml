@@ -1,0 +1,60 @@
+# Builds all drivers under drivers/ as part of pull request validation.
+#
+# SPDX-License-Identifier: MIT
+#
+
+name: Build Drivers
+
+on:
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'drivers/**'
+      - '.github/workflows/build-drivers.yml'
+
+jobs:
+  build-drivers:
+    name: Build Windows Drivers
+    runs-on: windows-2022
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v6
+
+      - name: Add MSBuild to PATH
+        uses: microsoft/setup-msbuild@v2
+        with:
+          msbuild-architecture: x64
+
+      - name: Restore All Driver Projects
+        shell: pwsh
+        run: |
+          $projects = Get-ChildItem -Path drivers -Recurse -Filter *.vcxproj | Sort-Object FullName
+          if (-not $projects) {
+            throw "No .vcxproj files were found under drivers/."
+          }
+
+          foreach ($project in $projects) {
+            Write-Host "Restoring $($project.FullName)"
+            nuget restore $project.FullName -ConfigFile $env:APPDATA\NuGet\NuGet.Config
+          }
+
+      - name: Build All Driver Projects
+        shell: pwsh
+        run: |
+          $projects = Get-ChildItem -Path drivers -Recurse -Filter *.vcxproj | Sort-Object FullName
+          if (-not $projects) {
+            throw "No .vcxproj files were found under drivers/."
+          }
+
+          foreach ($project in $projects) {
+            Write-Host "Building $($project.FullName)"
+            msbuild $project.FullName /p:Configuration=Release /p:Platform=ARM64 /p:WarningLevel=4
+          }
+
+      - name: Upload Driver Build Artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: drivers-ARM64-Release
+          path: drivers/**/*.sys
+          if-no-files-found: ignore
