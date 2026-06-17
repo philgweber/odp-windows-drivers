@@ -13,12 +13,23 @@ name: build_os_image
 
 permissions:
   contents: read
+  actions: read
 
 on:
   workflow_run:
     workflows: ["Build Drivers"]
     types: [completed]
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'platforms/**'
+      - '.github/workflows/build_os_qemu.yml'
   workflow_dispatch:
+    inputs:
+      git_ref:
+        description: 'Optional branch, tag, or SHA to build'
+        required: false
+        type: string
   workflow_call:
     inputs:
       git_ref:
@@ -35,7 +46,7 @@ jobs:
     if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: windows-latest
     name: Build QMEU ARM64 OS image
-    timeout-minutes: 20
+    timeout-minutes: 30
     defaults:
       run:
         shell: pwsh
@@ -44,6 +55,53 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
         with:
           ref: ${{ inputs.git_ref || github.event.workflow_run.head_sha || github.ref }}
+
+      - name: Download driver artifacts (workflow_run)
+        if: ${{ github.event_name == 'workflow_run' }}
+        uses: actions/download-artifact@95815c38cf2ff2164869cbab79da8d1f422bc89e  # v4.2.2
+        with:
+          name: drivers-ARM64-Release
+          path: .
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build drivers (workflow_dispatch/workflow_call)
+        if: ${{ github.event_name != 'workflow_run' }}
+        shell: pwsh
+        run: |
+          $projects = Get-ChildItem -Path drivers -Recurse -Filter *.vcxproj | Sort-Object FullName
+          if (-not $projects) {
+            throw "No .vcxproj files were found under drivers/."
+          }
+
+          # Install NuGet
+          $nuget = Join-Path $env:RUNNER_TEMP 'nuget.exe'
+          if (-not (Test-Path $nuget)) {
+            $ProgressPreference = 'SilentlyContinue'
+            Invoke-WebRequest -Uri 'https://dist.nuget.org/win-x86-commandline/latest/nuget.exe' -OutFile $nuget
+          }
+
+          foreach ($project in $projects) {
+            Write-Host "Restoring $($project.FullName)"
+            & $nuget restore $project.FullName
+          }
+
+      - name: Setup MSBuild (workflow_dispatch/workflow_call)
+        if: ${{ github.event_name != 'workflow_run' }}
+        uses: microsoft/setup-msbuild@v2
+        with:
+          msbuild-architecture: x64
+
+      - name: Build driver projects (workflow_dispatch/workflow_call)
+        if: ${{ github.event_name != 'workflow_run' }}
+        shell: pwsh
+        run: |
+          $projects = Get-ChildItem -Path drivers -Recurse -Filter *.vcxproj | Sort-Object FullName
+          foreach ($project in $projects) {
+            Write-Host "Building $($project.FullName)"
+            msbuild $project.FullName /p:Configuration=Release /p:Platform=ARM64
+            if ($LASTEXITCODE -ne 0) { throw "Build failed for $($project.FullName)" }
+          }
 
       - name: Download Validation OS ISO
         run: $ProgressPreference='SilentlyContinue'; iwr 'https://aka.ms/DownloadValidationOS_arm64' -OutFile 'ValidationOS.iso'
