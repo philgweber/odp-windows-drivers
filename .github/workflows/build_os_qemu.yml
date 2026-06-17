@@ -175,17 +175,19 @@ jobs:
           $disk = Mount-VHD -Path $vhdxPath -Passthru
           try {
             $disk | Initialize-Disk -PartitionStyle GPT
-            $efiPart = $disk | New-Partition -Size 100MB -GptType '{c12a7328-f81f-11d2-ba4b-00a0c93ec93b}'
+
+            $efiPart = $disk | New-Partition -Size 100MB -GptType '{c12a7328-f81f-11d2-ba4b-00a0c93ec93b}' -AssignDriveLetter
             $efiPart | Format-Volume -FileSystem FAT32 -NewFileSystemLabel 'EFI' -Confirm:$false | Out-Null
+            $efiLetter = $efiPart.DriveLetter
 
-            $osPart = $disk | New-Partition -UseMaximumSize -GptType '{ebd0a0a2-b9e5-4433-87c0-68b6b72699c7}'
+            $osPart = $disk | New-Partition -UseMaximumSize -GptType '{ebd0a0a2-b9e5-4433-87c0-68b6b72699c7}' -AssignDriveLetter
             $osPart | Format-Volume -FileSystem NTFS -NewFileSystemLabel 'ValidationOS' -Confirm:$false | Out-Null
+            $osLetter = $osPart.DriveLetter
 
-            $osLetter = ($osPart | Add-PartitionAccessPath -AssignDriveLetter -PassThru).DriveLetter
-            $efiLetter = ($efiPart | Add-PartitionAccessPath -AssignDriveLetter -PassThru).DriveLetter
+            Write-Host "EFI partition: ${efiLetter}:  OS partition: ${osLetter}:"
 
             Write-Host "Applying WIM to ${osLetter}:\"
-            dism.exe /Apply-Image /ImageFile:$wimPath /Index:1 /ApplyDir:"${osLetter}:\"
+            dism.exe /Apply-Image /ImageFile:"$wimPath" /Index:1 /ApplyDir:"${osLetter}:\"
             if ($LASTEXITCODE -ne 0) { throw "Failed to apply WIM with exit code $LASTEXITCODE" }
 
             Write-Host "Creating boot files on ${efiLetter}:\"
