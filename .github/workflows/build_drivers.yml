@@ -10,7 +10,13 @@ on:
     branches: [ main ]
     paths:
       - 'drivers/**'
-      - '.github/workflows/build-drivers.yml'
+      - '.github/workflows/build_drivers.yml'
+  push:
+    branches: [ main ]
+    paths:
+      - 'drivers/**'
+      - '.github/workflows/build_drivers.yml'
+  workflow_dispatch:
 
 jobs:
   build-drivers:
@@ -56,5 +62,8 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: drivers-ARM64-Release
-          path: drivers/**/*.sys
+          path: |
+            drivers/**/arm64/Release/**/*.sys
+            drivers/**/arm64/Release/**/*.inf
+            drivers/**/arm64/Release/**/*.cat
           if-no-files-found: ignore
