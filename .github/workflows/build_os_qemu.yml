@@ -56,7 +56,7 @@ jobs:
         uses: actions/download-artifact@95815c38cf2ff2164869cbab79da8d1f422bc89e  # v4.2.2
         with:
           name: drivers-ARM64-Release
-          path: .
+          path: drivers
           run-id: ${{ github.event.workflow_run.id }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
@@ -65,7 +65,7 @@ jobs:
         uses: dawidd6/action-download-artifact@20319c5641d495c8a52e688b7dc5fada6c3a9fbc  # v8
         with:
           name: drivers-ARM64-Release
-          path: .
+          path: drivers
           workflow: build_drivers.yml
           branch: ${{ inputs.git_ref || github.ref_name }}
           workflow_conclusion: success
@@ -73,19 +73,24 @@ jobs:
 
       - name: Verify driver artifacts
         run: |
+          Write-Host "=== Downloaded artifact tree ==="
+          Get-ChildItem -Path drivers -Recurse -File | ForEach-Object { Write-Host $_.FullName }
+
           $driverListPath = Resolve-Path 'platforms\qemu\driverlist.txt'
           $driverRoots = Get-Content -Path $driverListPath |
             ForEach-Object { $_.Trim() } |
             Where-Object { $_ -and -not $_.StartsWith('#') }
 
           foreach ($root in $driverRoots) {
+            if (-not (Test-Path $root)) {
+              throw "Driver root '$root' not found after artifact download"
+            }
             $infFiles = Get-ChildItem -Path $root -Recurse -Filter *.inf -File -ErrorAction SilentlyContinue |
               Where-Object { $_.FullName -imatch '[\\/]arm64[\\/]release[\\/]' }
             if ($infFiles) {
               $infFiles | ForEach-Object { Write-Host "Found: $($_.FullName)" }
             } else {
-              Write-Host "WARNING: No ARM64 Release INF files under $root, listing contents:"
-              Get-ChildItem -Path $root -Recurse -ErrorAction SilentlyContinue | ForEach-Object { Write-Host "  $($_.FullName)" }
+              throw "No ARM64 Release INF files under $root"
             }
           }
 
