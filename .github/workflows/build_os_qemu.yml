@@ -1,0 +1,129 @@
+# Builds the ODP Validation OS WIM image on a Windows runner.
+#
+# SPDX-License-Identifier: MIT
+#
+# Triggered automatically after the Build Drivers workflow completes for CI validation, manually via
+# workflow_dispatch from any branch, or invoked via workflow_call by the release workflow with a specific
+# git ref. The generated WIM has the QEMU drivers injected before the artifact is uploaded.
+#
+# Third-party actions are pinned by commit SHA which is monitored by the dependabot.yml file.
+#
+
+name: build_os_image
+
+permissions:
+  contents: read
+
+on:
+  workflow_run:
+    workflows: ["Build Drivers"]
+    types: [completed]
+  workflow_dispatch:
+  workflow_call:
+    inputs:
+      git_ref:
+        description: 'Git tag in vYYYY.MM.DD format'
+        required: true
+        type: string
+
+concurrency:
+  group: build_os_image-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
+    runs-on: windows-latest
+    name: Build QMEU ARM64 OS image
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - name: Clone Repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+        with:
+          ref: ${{ inputs.git_ref || github.event.workflow_run.head_sha || github.ref }}
+
+      - name: Download Validation OS ISO
+        run: $ProgressPreference='SilentlyContinue'; iwr 'https://aka.ms/DownloadValidationOS_arm64' -OutFile 'ValidationOS.iso'
+
+      - name: Build WIM
+        run: |
+          $mount = Mount-DiskImage -ImagePath (Resolve-Path ValidationOS.iso).Path -PassThru
+          $drive = ($mount | Get-Volume).DriveLetter
+          try {
+            cmd /c "${drive}:\GenImage\GenImage.cmd -PackagesList:platforms\qemu\armvirt_config.pkg -PackagePath:${drive}:\cabs -ImagePath:${drive}:\ -RegistryImport:platforms\qemu\armvirt_policy.reg -OutPath:postbuild\os\build -wim -NoWait"
+            if ($LASTEXITCODE -ne 0) { throw "GenImage.cmd failed with exit code $LASTEXITCODE" }
+          } finally {
+            Dismount-DiskImage -ImagePath $mount.ImagePath
+          }
+
+      - name: Inject QEMU drivers into WIM
+        run: |
+          $driverListPath = Resolve-Path 'platforms\qemu\driverlist.txt'
+          $wimPath = Resolve-Path 'postbuild\os\build\ValidationOS-1.wim'
+          $mountPath = Join-Path $env:RUNNER_TEMP 'os-image-mount'
+
+          if (Test-Path $mountPath) {
+            Remove-Item -Path $mountPath -Recurse -Force
+          }
+
+          New-Item -ItemType Directory -Path $mountPath -Force | Out-Null
+
+          $driverRoots = Get-Content -Path $driverListPath |
+            ForEach-Object { $_.Trim() } |
+            Where-Object { $_ -and -not $_.StartsWith('#') } |
+            ForEach-Object { Resolve-Path $_ }
+
+          if (-not $driverRoots) {
+            throw "No driver paths found in $driverListPath"
+          }
+
+          $infPaths = foreach ($driverRoot in $driverRoots) {
+            Get-ChildItem -Path $driverRoot -Recurse -Filter *.inf -File |
+              Where-Object { $_.FullName -imatch '[\\/]arm64[\\/]release[\\/]' }
+          }
+
+          if (-not $infPaths) {
+            throw "No ARM64 Release INF files found for any driver listed in $driverListPath"
+          }
+
+          $infPaths = $infPaths | Sort-Object FullName -Unique
+
+          try {
+            dism.exe /Mount-Image /ImageFile:$wimPath /Index:1 /MountDir:$mountPath
+            if ($LASTEXITCODE -ne 0) { throw "Failed to mount WIM with exit code $LASTEXITCODE" }
+
+            foreach ($infPath in $infPaths) {
+              Write-Host "Injecting driver $($infPath.FullName)"
+              dism.exe /Image:$mountPath /Add-Driver /Driver:$($infPath.FullName)
+              if ($LASTEXITCODE -ne 0) { throw "Failed to add driver $($infPath.FullName) with exit code $LASTEXITCODE" }
+            }
+
+            dism.exe /Unmount-Image /MountDir:$mountPath /Commit
+            if ($LASTEXITCODE -ne 0) { throw "Failed to commit WIM changes with exit code $LASTEXITCODE" }
+          } finally {
+            $mountedImage = Get-WindowsImage -Mounted | Where-Object { $_.Path -eq $mountPath }
+            if ($mountedImage) {
+              dism.exe /Unmount-Image /MountDir:$mountPath /Discard | Out-Null
+            }
+
+            if (Test-Path $mountPath) {
+              Remove-Item -Path $mountPath -Recurse -Force -ErrorAction SilentlyContinue
+            }
+          }
+
+      - name: Stage artifact
+        run: |
+          New-Item -ItemType Directory -Force -Path staging | Out-Null
+          Remove-Item -Path staging\* -Force -ErrorAction SilentlyContinue
+          Move-Item -Force postbuild\os\build\ValidationOS-1.wim "staging\os-image.wim"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        with:
+          name: os-image
+          path: staging/
+          retention-days: 1
+          if-no-files-found: error
