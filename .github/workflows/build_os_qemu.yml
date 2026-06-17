@@ -19,11 +19,6 @@ on:
   workflow_run:
     workflows: ["Build Drivers"]
     types: [completed]
-  pull_request:
-    branches: [ main ]
-    paths:
-      - 'platforms/**'
-      - '.github/workflows/build_os_qemu.yml'
   workflow_dispatch:
     inputs:
       git_ref:
@@ -56,16 +51,43 @@ jobs:
         with:
           ref: ${{ inputs.git_ref || github.event.workflow_run.head_sha || github.ref }}
 
-      - name: Download driver artifacts
+      - name: Download driver artifacts (workflow_run)
+        if: ${{ github.event_name == 'workflow_run' }}
+        uses: actions/download-artifact@95815c38cf2ff2164869cbab79da8d1f422bc89e  # v4.2.2
+        with:
+          name: drivers-ARM64-Release
+          path: .
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Download driver artifacts (manual/call)
+        if: ${{ github.event_name != 'workflow_run' }}
         uses: dawidd6/action-download-artifact@20319c5641d495c8a52e688b7dc5fada6c3a9fbc  # v8
         with:
           name: drivers-ARM64-Release
           path: .
           workflow: build_drivers.yml
-          run_id: ${{ github.event.workflow_run.id || '' }}
-          branch: ${{ inputs.git_ref || github.head_ref || github.ref_name }}
+          branch: ${{ inputs.git_ref || github.ref_name }}
           workflow_conclusion: success
           if_no_artifact_found: fail
+
+      - name: Verify driver artifacts
+        run: |
+          $driverListPath = Resolve-Path 'platforms\qemu\driverlist.txt'
+          $driverRoots = Get-Content -Path $driverListPath |
+            ForEach-Object { $_.Trim() } |
+            Where-Object { $_ -and -not $_.StartsWith('#') }
+
+          foreach ($root in $driverRoots) {
+            $infFiles = Get-ChildItem -Path $root -Recurse -Filter *.inf -File -ErrorAction SilentlyContinue |
+              Where-Object { $_.FullName -imatch '[\\/]arm64[\\/]release[\\/]' }
+            if ($infFiles) {
+              $infFiles | ForEach-Object { Write-Host "Found: $($_.FullName)" }
+            } else {
+              Write-Host "WARNING: No ARM64 Release INF files under $root, listing contents:"
+              Get-ChildItem -Path $root -Recurse -ErrorAction SilentlyContinue | ForEach-Object { Write-Host "  $($_.FullName)" }
+            }
+          }
 
       - name: Download Validation OS ISO
         run: $ProgressPreference='SilentlyContinue'; iwr 'https://aka.ms/DownloadValidationOS_arm64' -OutFile 'ValidationOS.iso'
