@@ -14,17 +14,47 @@ on:
   workflow_dispatch:
 
 jobs:
+  discover-drivers:
+    name: Discover Driver Projects
+    runs-on: windows-2022
+    outputs:
+      drivers: ${{ steps.discover.outputs.drivers }}
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v6
+
+      - name: Discover projects
+        id: discover
+        shell: pwsh
+        run: |
+          $projects = Get-ChildItem -Path drivers -Recurse -Filter *.vcxproj | Sort-Object FullName
+          if (-not $projects) {
+            throw "No .vcxproj files were found under drivers/."
+          }
+
+          $entries = foreach ($project in $projects) {
+            $relativeDirectory = Resolve-Path -LiteralPath $project.Directory.FullName -Relative
+            $relativeDirectory = ($relativeDirectory -replace '^[.][\\/]', '') -replace '\\', '/'
+
+            [pscustomobject]@{
+              name = $project.BaseName
+              project = $project.FullName
+              directory = $relativeDirectory
+            }
+          }
+
+          $json = @($entries) | ConvertTo-Json -Compress
+          "drivers=$json" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
   build-drivers:
-    name: Build Windows Drivers (${{ matrix.platform }})
+    name: Build ${{ matrix.driver.name }} (${{ matrix.platform }})
+    needs: discover-drivers
     runs-on: windows-2022
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - platform: ARM64
-            path_segment: arm64
-          - platform: x64
-            path_segment: x64
+        platform: [ARM64, x64]
+        driver: ${{ fromJson(needs.discover-drivers.outputs.drivers) }}
     steps:
       - name: Checkout Code
         uses: actions/checkout@v6
@@ -34,39 +64,27 @@ jobs:
         with:
           msbuild-architecture: x64
 
-      - name: Restore All Driver Projects
+      - name: Restore Driver Project
         shell: pwsh
         run: |
-          $projects = Get-ChildItem -Path drivers -Recurse -Filter *.vcxproj | Sort-Object FullName
-          if (-not $projects) {
-            throw "No .vcxproj files were found under drivers/."
-          }
+          $project = '${{ matrix.driver.project }}'
+          Write-Host "Restoring $project"
+          nuget restore $project -ConfigFile $env:APPDATA\NuGet\NuGet.Config
 
-          foreach ($project in $projects) {
-            Write-Host "Restoring $($project.FullName)"
-            nuget restore $project.FullName -ConfigFile $env:APPDATA\NuGet\NuGet.Config
-          }
-
-      - name: Build All Driver Projects
+      - name: Build Driver Project
         shell: pwsh
         run: |
-          $projects = Get-ChildItem -Path drivers -Recurse -Filter *.vcxproj | Sort-Object FullName
-          if (-not $projects) {
-            throw "No .vcxproj files were found under drivers/."
-          }
+          $project = '${{ matrix.driver.project }}'
+          Write-Host "Building $project"
+          msbuild $project /p:Configuration=Release /p:Platform=${{ matrix.platform }} /p:WarningLevel=4
 
-          foreach ($project in $projects) {
-            Write-Host "Building $($project.FullName)"
-            msbuild $project.FullName /p:Configuration=Release /p:Platform=${{ matrix.platform }} /p:WarningLevel=4
-          }
-
-      - name: Upload Driver Build Artifacts
+      - name: Upload Driver Artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: drivers-${{ matrix.platform }}-Release
+          name: driver-${{ matrix.driver.name }}-${{ matrix.platform }}-Release
           path: |
-            drivers/**/${{ matrix.path_segment }}/Release/**/*.sys
-            drivers/**/${{ matrix.path_segment }}/Release/**/*.inf
-            drivers/**/${{ matrix.path_segment }}/Release/**/*.cat
+            ${{ matrix.driver.directory }}/${{ matrix.platform }}/Release/**/*.sys
+            ${{ matrix.driver.directory }}/${{ matrix.platform }}/Release/**/*.inf
+            ${{ matrix.driver.directory }}/${{ matrix.platform }}/Release/**/*.cat
           if-no-files-found: ignore
