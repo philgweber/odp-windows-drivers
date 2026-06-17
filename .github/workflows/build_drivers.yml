@@ -10,18 +10,21 @@ on:
     branches: [ main ]
     paths:
       - 'drivers/**'
-      - '.github/workflows/build_drivers.yml'
-  push:
-    branches: [ main ]
-    paths:
-      - 'drivers/**'
-      - '.github/workflows/build_drivers.yml'
+      - '.github/workflows/build_*.yml'
   workflow_dispatch:
 
 jobs:
   build-drivers:
-    name: Build Windows Drivers
+    name: Build Windows Drivers (${{ matrix.platform }})
     runs-on: windows-2022
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: ARM64
+            path_segment: arm64
+          - platform: x64
+            path_segment: x64
     steps:
       - name: Checkout Code
         uses: actions/checkout@v6
@@ -54,16 +57,16 @@ jobs:
 
           foreach ($project in $projects) {
             Write-Host "Building $($project.FullName)"
-            msbuild $project.FullName /p:Configuration=Release /p:Platform=ARM64 /p:WarningLevel=4
+            msbuild $project.FullName /p:Configuration=Release /p:Platform=${{ matrix.platform }} /p:WarningLevel=4
           }
 
       - name: Upload Driver Build Artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: drivers-ARM64-Release
+          name: drivers-${{ matrix.platform }}-Release
           path: |
-            drivers/**/arm64/Release/**/*.sys
-            drivers/**/arm64/Release/**/*.inf
-            drivers/**/arm64/Release/**/*.cat
+            drivers/**/${{ matrix.path_segment }}/Release/**/*.sys
+            drivers/**/${{ matrix.path_segment }}/Release/**/*.inf
+            drivers/**/${{ matrix.path_segment }}/Release/**/*.cat
           if-no-files-found: ignore

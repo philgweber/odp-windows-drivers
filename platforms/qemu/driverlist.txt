@@ -1,2 +1,0 @@
-drivers\qemu\pl061gpio
-drivers\qemu\QemuI2C
