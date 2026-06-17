@@ -56,52 +56,16 @@ jobs:
         with:
           ref: ${{ inputs.git_ref || github.event.workflow_run.head_sha || github.ref }}
 
-      - name: Download driver artifacts (workflow_run)
-        if: ${{ github.event_name == 'workflow_run' }}
-        uses: actions/download-artifact@95815c38cf2ff2164869cbab79da8d1f422bc89e  # v4.2.2
+      - name: Download driver artifacts
+        uses: dawidd6/action-download-artifact@20319c5641d495c8a52e688b7dc5fada6c3a9fbc  # v8
         with:
           name: drivers-ARM64-Release
           path: .
-          run-id: ${{ github.event.workflow_run.id }}
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Build drivers (workflow_dispatch/workflow_call)
-        if: ${{ github.event_name != 'workflow_run' }}
-        shell: pwsh
-        run: |
-          $projects = Get-ChildItem -Path drivers -Recurse -Filter *.vcxproj | Sort-Object FullName
-          if (-not $projects) {
-            throw "No .vcxproj files were found under drivers/."
-          }
-
-          # Install NuGet
-          $nuget = Join-Path $env:RUNNER_TEMP 'nuget.exe'
-          if (-not (Test-Path $nuget)) {
-            $ProgressPreference = 'SilentlyContinue'
-            Invoke-WebRequest -Uri 'https://dist.nuget.org/win-x86-commandline/latest/nuget.exe' -OutFile $nuget
-          }
-
-          foreach ($project in $projects) {
-            Write-Host "Restoring $($project.FullName)"
-            & $nuget restore $project.FullName
-          }
-
-      - name: Setup MSBuild (workflow_dispatch/workflow_call)
-        if: ${{ github.event_name != 'workflow_run' }}
-        uses: microsoft/setup-msbuild@v2
-        with:
-          msbuild-architecture: x64
-
-      - name: Build driver projects (workflow_dispatch/workflow_call)
-        if: ${{ github.event_name != 'workflow_run' }}
-        shell: pwsh
-        run: |
-          $projects = Get-ChildItem -Path drivers -Recurse -Filter *.vcxproj | Sort-Object FullName
-          foreach ($project in $projects) {
-            Write-Host "Building $($project.FullName)"
-            msbuild $project.FullName /p:Configuration=Release /p:Platform=ARM64
-            if ($LASTEXITCODE -ne 0) { throw "Build failed for $($project.FullName)" }
-          }
+          workflow: build_drivers.yml
+          run_id: ${{ github.event.workflow_run.id || '' }}
+          branch: ${{ inputs.git_ref || github.head_ref || github.ref_name }}
+          workflow_conclusion: success
+          if_no_artifact_found: fail
 
       - name: Download Validation OS ISO
         run: $ProgressPreference='SilentlyContinue'; iwr 'https://aka.ms/DownloadValidationOS_arm64' -OutFile 'ValidationOS.iso'
