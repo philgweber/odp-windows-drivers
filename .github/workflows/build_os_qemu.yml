@@ -163,16 +163,44 @@ jobs:
             }
           }
 
-      - name: Stage artifact
+      - name: Convert WIM to VHDX
         run: |
+          $wimPath = Resolve-Path 'postbuild\os\build\ValidationOS-1.wim'
+          $vhdxPath = Join-Path (Get-Location) 'staging\os-image.vhdx'
+          $vhdxSizeBytes = 2GB
+
           New-Item -ItemType Directory -Force -Path staging | Out-Null
-          Remove-Item -Path staging\* -Force -ErrorAction SilentlyContinue
-          Move-Item -Force postbuild\os\build\ValidationOS-1.wim "staging\os-image.wim"
+
+          $vhdx = New-VHD -Path $vhdxPath -SizeBytes $vhdxSizeBytes -Dynamic
+          $disk = Mount-VHD -Path $vhdxPath -Passthru
+          try {
+            $disk | Initialize-Disk -PartitionStyle GPT
+            $efiPart = $disk | New-Partition -Size 100MB -GptType '{c12a7328-f81f-11d2-ba4b-00a0c93ec93b}'
+            $efiPart | Format-Volume -FileSystem FAT32 -NewFileSystemLabel 'EFI' -Confirm:$false | Out-Null
+
+            $osPart = $disk | New-Partition -UseMaximumSize -GptType '{ebd0a0a2-b9e5-4433-87c0-68b6b72699c7}'
+            $osPart | Format-Volume -FileSystem NTFS -NewFileSystemLabel 'ValidationOS' -Confirm:$false | Out-Null
+
+            $osLetter = ($osPart | Add-PartitionAccessPath -AssignDriveLetter -PassThru).DriveLetter
+            $efiLetter = ($efiPart | Add-PartitionAccessPath -AssignDriveLetter -PassThru).DriveLetter
+
+            Write-Host "Applying WIM to ${osLetter}:\"
+            dism.exe /Apply-Image /ImageFile:$wimPath /Index:1 /ApplyDir:"${osLetter}:\"
+            if ($LASTEXITCODE -ne 0) { throw "Failed to apply WIM with exit code $LASTEXITCODE" }
+
+            Write-Host "Creating boot files on ${efiLetter}:\"
+            bcdboot "${osLetter}:\Windows" /s "${efiLetter}:" /f UEFI
+            if ($LASTEXITCODE -ne 0) { throw "bcdboot failed with exit code $LASTEXITCODE" }
+          } finally {
+            Dismount-VHD -Path $vhdxPath
+          }
+
+          Write-Host "VHDX created: $vhdxPath ($('{0:N1} MB' -f ((Get-Item $vhdxPath).Length / 1MB)))"
 
       - name: Upload artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
         with:
           name: os-image
-          path: staging/
+          path: staging/os-image.vhdx
           retention-days: 1
           if-no-files-found: error
