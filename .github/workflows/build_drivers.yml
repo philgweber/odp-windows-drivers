@@ -87,4 +87,5 @@ jobs:
             ${{ matrix.driver.directory }}/${{ matrix.platform }}/Release/**/*.sys
             ${{ matrix.driver.directory }}/${{ matrix.platform }}/Release/**/*.inf
             ${{ matrix.driver.directory }}/${{ matrix.platform }}/Release/**/*.cat
+          retention-days: 7
           if-no-files-found: ignore
