@@ -1,0 +1,91 @@
+# Builds all drivers under drivers/ as part of pull request validation.
+#
+# SPDX-License-Identifier: MIT
+#
+
+name: Build Drivers
+
+on:
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'drivers/**'
+      - '.github/workflows/build_*.yml'
+  workflow_dispatch:
+
+jobs:
+  discover-drivers:
+    name: Discover Driver Projects
+    runs-on: windows-2022
+    outputs:
+      drivers: ${{ steps.discover.outputs.drivers }}
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v6
+
+      - name: Discover projects
+        id: discover
+        shell: pwsh
+        run: |
+          $projects = Get-ChildItem -Path drivers -Recurse -Filter *.vcxproj | Sort-Object FullName
+          if (-not $projects) {
+            throw "No .vcxproj files were found under drivers/."
+          }
+
+          $entries = foreach ($project in $projects) {
+            $relativeDirectory = Resolve-Path -LiteralPath $project.Directory.FullName -Relative
+            $relativeDirectory = ($relativeDirectory -replace '^[.][\\/]', '') -replace '\\', '/'
+
+            [pscustomobject]@{
+              name = $project.BaseName
+              project = $project.FullName
+              directory = $relativeDirectory
+            }
+          }
+
+          $json = @($entries) | ConvertTo-Json -Compress
+          "drivers=$json" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+  build-drivers:
+    name: Build ${{ matrix.driver.name }} (${{ matrix.platform }})
+    needs: discover-drivers
+    runs-on: windows-2022
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: [ARM64, x64]
+        driver: ${{ fromJson(needs.discover-drivers.outputs.drivers) }}
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v6
+
+      - name: Add MSBuild to PATH
+        uses: microsoft/setup-msbuild@v2
+        with:
+          msbuild-architecture: x64
+
+      - name: Restore Driver Project
+        shell: pwsh
+        run: |
+          $project = '${{ matrix.driver.project }}'
+          Write-Host "Restoring $project"
+          nuget restore $project -ConfigFile $env:APPDATA\NuGet\NuGet.Config
+
+      - name: Build Driver Project
+        shell: pwsh
+        run: |
+          $project = '${{ matrix.driver.project }}'
+          Write-Host "Building $project"
+          msbuild $project /p:Configuration=Release /p:Platform=${{ matrix.platform }} /p:WarningLevel=4
+
+      - name: Upload Driver Artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: driver-${{ matrix.driver.name }}-${{ matrix.platform }}-Release
+          path: |
+            ${{ matrix.driver.directory }}/${{ matrix.platform }}/Release/**/*.sys
+            ${{ matrix.driver.directory }}/${{ matrix.platform }}/Release/**/*.inf
+            ${{ matrix.driver.directory }}/${{ matrix.platform }}/Release/**/*.cat
+          retention-days: 7
+          if-no-files-found: ignore

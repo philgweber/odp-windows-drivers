@@ -1,14 +1,32 @@
 {
     "editor.formatOnSave": true,
-    "rust-analyzer.checkOnSave": true,
-    "rust-analyzer.check.allTargets": false,
-    "rust-analyzer.cargo.target": "thumbv8m.main-none-eabihf",
-    "rust-analyzer.cargo.features": "all",
-    "rust-analyzer.check.command": "clippy",
-    "[toml]": {
-        "editor.defaultFormatter": "tamasfe.even-better-toml"
+    "C_Cpp.default.intelliSenseMode": "windows-msvc-x64",
+    "C_Cpp.default.cStandard": "c17",
+    "C_Cpp.default.cppStandard": "c++20",
+    "C_Cpp.default.compilerPath": "cl.exe",
+    "C_Cpp.default.includePath": [
+        "${workspaceFolder}/drivers/**",
+        "${env:ProgramFiles(x86)}/Windows Kits/10/Include/**/shared",
+        "${env:ProgramFiles(x86)}/Windows Kits/10/Include/**/km",
+        "${env:ProgramFiles(x86)}/Windows Kits/10/Include/**/um",
+        "${env:ProgramFiles(x86)}/Windows Kits/10/Include/**/ucrt",
+        "${env:ProgramFiles(x86)}/Windows Kits/10/Include/**/wdf/kmdf/*",
+        "${env:ProgramFiles(x86)}/Windows Kits/10/Include/**/wdf/umdf/*"
+    ],
+    "C_Cpp.default.browse.path": [
+        "${workspaceFolder}/drivers",
+        "${env:ProgramFiles(x86)}/Windows Kits/10/Include"
+    ],
+    "C_Cpp.default.defines": [
+        "_WIN32_WINNT=0x0A00",
+        "WIN32_LEAN_AND_MEAN",
+        "UNICODE",
+        "_UNICODE",
+        "NTDDI_VERSION=0x0A000000",
+        "_AMD64_"
+    ],
+    "files.associations": {
+        "*.rc": "cpp",
+        "*.inx": "ini"
     },
-    "[rust]": {
-        "editor.defaultFormatter": "rust-lang.rust-analyzer"
-    }
 }

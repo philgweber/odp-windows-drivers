@@ -15,14 +15,18 @@ Read every review comment and the surrounding code. Present your analysis in a t
 
 | # | Comment | Location | Valid? | Reasoning | Proposed Fix |
 |---|---------|----------|--------|-----------|--------------|
-| 1 | Reviewer's comment (summarized) | `src/file.rs:42` ([link]) | ✅ Yes / ❌ No / ⚠️ Partial | Why you agree or disagree, with code snippet | What you would change (or "No change needed") |
+| 1 | Reviewer's comment (summarized) | `drivers/tmpdrv/device.cpp:42` ([link]) | ✅ Yes / ❌ No / ⚠️ Partial | Why you agree or disagree, with code snippet | What you would change (or "No change needed") |
 
 Include a short code snippet in the Reasoning or Proposed Fix column to show the relevant context:
 ```
 // current code
-let val = buf[i];
+uint32_t val = buf[i];
 // proposed fix
-let val = buf.get(i).ok_or(MyError::InvalidParams)?;
+if(buf.len() > i) {
+  val = buf[i];
+ } else {
+  return INVALID_PARAMETER;
+ }
 ```
 
 ## Step 2: Ask for confirmation
@@ -35,8 +39,7 @@ Implement only the confirmed fixes. For comments marked invalid that the develop
 
 ## Guidelines
 
-- When disagreeing with a comment, explain clearly why — reference specific code, types, traits, or constraints.
-- Consider the crate's `no_std` context, strict clippy policy, and feature-gated code when evaluating suggestions.
-- If a reviewer suggests using `unwrap()`, `panic!()`, or direct indexing, flag it as invalid — these are denied by clippy config.
+- When disagreeing with a comment, explain clearly why — reference specific code, types, structures, or constraints.
+- Consider the drivers KMDF or UMDF dependencies when evaluating suggestions.
 - If a comment is about style or formatting, mark it as invalid — CI enforces these automatically.
 - Create new fixup commits for each change — do NOT amend existing commits. The author will squash them before merge.
