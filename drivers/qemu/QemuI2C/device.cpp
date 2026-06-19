@@ -2,13 +2,13 @@
 
 Copyright (c) Microsoft Corporation.  All rights reserved.
 
-Module Name: 
+Module Name:
 
     device.cpp
 
 Abstract:
 
-    This module contains WDF device initialization 
+    This module contains WDF device initialization
     and SPB callback functions for the controller driver.
 
 Environment:
@@ -25,7 +25,6 @@ Revision History:
 
 #include "device.tmh"
 
-
 /////////////////////////////////////////////////
 //
 // WDF and SPB DDI callbacks.
@@ -34,12 +33,11 @@ Revision History:
 
 NTSTATUS
 OnPrepareHardware(
-    _In_  WDFDEVICE    FxDevice,
-    _In_  WDFCMRESLIST FxResourcesRaw,
-    _In_  WDFCMRESLIST FxResourcesTranslated
-    )
+    _In_ WDFDEVICE FxDevice,
+    _In_ WDFCMRESLIST FxResourcesRaw,
+    _In_ WDFCMRESLIST FxResourcesTranslated)
 /*++
- 
+
   Routine Description:
 
     This routine maps the hardware resources to the SPB
@@ -48,9 +46,9 @@ OnPrepareHardware(
   Arguments:
 
     FxDevice - a handle to the framework device object
-    FxResourcesRaw - list of translated hardware resources that 
+    FxResourcesRaw - list of translated hardware resources that
         the PnP manager has assigned to the device
-    FxResourcesTranslated - list of raw hardware resources that 
+    FxResourcesTranslated - list of raw hardware resources that
         the PnP manager has assigned to the device
 
   Return Value:
@@ -63,11 +61,11 @@ OnPrepareHardware(
 
     PPBC_DEVICE pDevice = GetDeviceContext(FxDevice);
     NT_ASSERT(pDevice != NULL);
-    
-    NTSTATUS status = STATUS_SUCCESS; 
+
+    NTSTATUS status = STATUS_SUCCESS;
 
     UNREFERENCED_PARAMETER(FxResourcesRaw);
-    
+
     //
     // Get the register base for the I2C controller.
     //
@@ -75,16 +73,16 @@ OnPrepareHardware(
     {
         ULONG resourceCount = WdfCmResourceListGetCount(FxResourcesTranslated);
 
-        for(ULONG i = 0; i < resourceCount; i++)
+        for (ULONG i = 0; i < resourceCount; i++)
         {
             PCM_PARTIAL_RESOURCE_DESCRIPTOR res;
-           
+
             res = WdfCmResourceListGetDescriptor(FxResourcesTranslated, i);
 
             if (res->Type == CmResourceTypeMemory)
             {
-                pDevice->pRegisters = 
-                    (PQEMUI2C_REGISTERS) MmMapIoSpaceEx(
+                pDevice->pRegisters =
+                    (PQEMUI2C_REGISTERS)MmMapIoSpaceEx(
                         res->u.Memory.Start,
                         res->u.Memory.Length,
                         PAGE_NOCACHE | PAGE_READWRITE);
@@ -99,12 +97,12 @@ OnPrepareHardware(
                         TRACE_LEVEL_ERROR,
                         TRACE_FLAG_WDFLOADING,
                         "Error mapping controller registers (PA:%I64x, length:%d) "
-                        "for WDFDEVICE %p - %!STATUS!", 
+                        "for WDFDEVICE %p - %!STATUS!",
                         res->u.Memory.Start.QuadPart,
                         res->u.Memory.Length,
                         pDevice->FxDevice,
                         status);
-                    
+
                     NT_ASSERT(pDevice->pRegisters != NULL);
 
                     goto exit;
@@ -118,9 +116,9 @@ OnPrepareHardware(
                 pDevice->pRegistersPhysicalAddress = res->u.Memory.Start;
 
                 Trace(
-                    TRACE_LEVEL_INFORMATION, 
-                    TRACE_FLAG_WDFLOADING, 
-                    "I2C controller @ paddr %I64x vaddr @ %p for WDFDEVICE %p", 
+                    TRACE_LEVEL_INFORMATION,
+                    TRACE_FLAG_WDFLOADING,
+                    "I2C controller @ paddr %I64x vaddr @ %p for WDFDEVICE %p",
                     pDevice->pRegistersPhysicalAddress.QuadPart,
                     pDevice->pRegisters,
                     pDevice->FxDevice);
@@ -129,7 +127,7 @@ OnPrepareHardware(
     }
 
 exit:
-    
+
     FuncExit(TRACE_FLAG_WDFLOADING);
 
     return status;
@@ -137,11 +135,10 @@ exit:
 
 NTSTATUS
 OnReleaseHardware(
-    _In_  WDFDEVICE    FxDevice,
-    _In_  WDFCMRESLIST FxResourcesTranslated
-    )
+    _In_ WDFDEVICE FxDevice,
+    _In_ WDFCMRESLIST FxResourcesTranslated)
 /*++
- 
+
   Routine Description:
 
     This routine unmaps the SPB controller register structure.
@@ -149,9 +146,9 @@ OnReleaseHardware(
   Arguments:
 
     FxDevice - a handle to the framework device object
-    FxResourcesRaw - list of translated hardware resources that 
+    FxResourcesRaw - list of translated hardware resources that
         the PnP manager has assigned to the device
-    FxResourcesTranslated - list of raw hardware resources that 
+    FxResourcesTranslated - list of raw hardware resources that
         the PnP manager has assigned to the device
 
   Return Value:
@@ -164,15 +161,15 @@ OnReleaseHardware(
 
     PPBC_DEVICE pDevice = GetDeviceContext(FxDevice);
     NT_ASSERT(pDevice != NULL);
-    
+
     NTSTATUS status = STATUS_SUCCESS;
-    
+
     UNREFERENCED_PARAMETER(FxResourcesTranslated);
-    
+
     if (pDevice->pRegisters != NULL)
     {
         MmUnmapIoSpace(pDevice->pRegisters, pDevice->RegistersCb);
-        
+
         pDevice->pRegisters = NULL;
         pDevice->RegistersCb = 0;
     }
@@ -184,14 +181,13 @@ OnReleaseHardware(
 
 NTSTATUS
 OnD0Entry(
-    _In_  WDFDEVICE              FxDevice,
-    _In_  WDF_POWER_DEVICE_STATE FxPreviousState
-    )
+    _In_ WDFDEVICE FxDevice,
+    _In_ WDF_POWER_DEVICE_STATE FxPreviousState)
 /*++
- 
+
   Routine Description:
 
-    This routine allocates objects needed by the driver 
+    This routine allocates objects needed by the driver
     and initializes the controller hardware.
 
   Arguments:
@@ -206,10 +202,10 @@ OnD0Entry(
 --*/
 {
     FuncEntry(TRACE_FLAG_WDFLOADING);
-    
+
     PPBC_DEVICE pDevice = GetDeviceContext(FxDevice);
     NT_ASSERT(pDevice != NULL);
-    
+
     UNREFERENCED_PARAMETER(FxPreviousState);
 
     //
@@ -219,7 +215,7 @@ OnD0Entry(
     pDevice->pCurrentTarget = NULL;
 
     ControllerInitialize(pDevice);
-    
+
     FuncExit(TRACE_FLAG_WDFLOADING);
 
     return STATUS_SUCCESS;
@@ -227,14 +223,13 @@ OnD0Entry(
 
 NTSTATUS
 OnD0Exit(
-    _In_  WDFDEVICE              FxDevice,
-    _In_  WDF_POWER_DEVICE_STATE FxPreviousState
-    )
+    _In_ WDFDEVICE FxDevice,
+    _In_ WDF_POWER_DEVICE_STATE FxPreviousState)
 /*++
- 
+
   Routine Description:
 
-    This routine destroys objects needed by the driver 
+    This routine destroys objects needed by the driver
     and uninitializes the controller hardware.
 
   Arguments:
@@ -252,9 +247,9 @@ OnD0Exit(
 
     PPBC_DEVICE pDevice = GetDeviceContext(FxDevice);
     NT_ASSERT(pDevice != NULL);
-    
+
     NTSTATUS status = STATUS_SUCCESS;
-    
+
     UNREFERENCED_PARAMETER(FxPreviousState);
 
     //
@@ -272,16 +267,15 @@ OnD0Exit(
 
 NTSTATUS
 OnSelfManagedIoInit(
-    _In_  WDFDEVICE  FxDevice
-    )
+    _In_ WDFDEVICE FxDevice)
 /*++
- 
+
   Routine Description:
 
     Initializes and starts the device's self-managed I/O operations.
 
   Arguments:
-  
+
     FxDevice - a handle to the framework device object
 
   Return Value:
@@ -295,19 +289,19 @@ OnSelfManagedIoInit(
     PPBC_DEVICE pDevice = GetDeviceContext(FxDevice);
     NTSTATUS status;
 
-    // 
+    //
     // Register for monitor power setting callback. This will be
     // used to dynamically set the idle timeout delay according
     // to the monitor power state.
-    // 
+    //
 
     NT_ASSERT(pDevice->pMonitorPowerSettingHandle == NULL);
-    
+
     status = PoRegisterPowerSettingCallback(
-        WdfDeviceWdmGetDeviceObject(pDevice->FxDevice), 
+        WdfDeviceWdmGetDeviceObject(pDevice->FxDevice),
         &GUID_MONITOR_POWER_ON,
-        OnMonitorPowerSettingCallback, 
-        (PVOID)pDevice->FxDevice, 
+        OnMonitorPowerSettingCallback,
+        (PVOID)pDevice->FxDevice,
         &pDevice->pMonitorPowerSettingHandle);
 
     if (!NT_SUCCESS(status))
@@ -317,7 +311,7 @@ OnSelfManagedIoInit(
             TRACE_FLAG_WDFLOADING,
             "Failed to register monitor power setting callback - %!STATUS!",
             status);
-                
+
         goto exit;
     }
 
@@ -328,18 +322,16 @@ exit:
     return status;
 }
 
-VOID
-OnSelfManagedIoCleanup(
-    _In_  WDFDEVICE  FxDevice
-    )
+VOID OnSelfManagedIoCleanup(
+    _In_ WDFDEVICE FxDevice)
 /*++
- 
+
   Routine Description:
 
     Cleanup for the device's self-managed I/O operations.
 
   Arguments:
-  
+
     FxDevice - a handle to the framework device object
 
   Return Value:
@@ -366,27 +358,26 @@ OnSelfManagedIoCleanup(
 }
 
 __drv_functionClass(POWER_SETTING_CALLBACK)
-_IRQL_requires_same_
-NTSTATUS
-OnMonitorPowerSettingCallback(
-    _In_                          LPCGUID SettingGuid,
-    _In_reads_bytes_(ValueLength) PVOID   Value,
-    _In_                          ULONG   ValueLength,
-    _Inout_opt_                   PVOID   Context
-   )
+    _IRQL_requires_same_
+    NTSTATUS
+    OnMonitorPowerSettingCallback(
+        _In_ LPCGUID SettingGuid,
+        _In_reads_bytes_(ValueLength) PVOID Value,
+        _In_ ULONG ValueLength,
+        _Inout_opt_ PVOID Context)
 /*++
- 
+
   Routine Description:
 
-    This routine updates the idle timeout delay according 
+    This routine updates the idle timeout delay according
     to the current monitor power setting.
 
   Arguments:
 
     SettingGuid - the setting GUID
     Value - pointer to the new value of the power setting that changed
-    ValueLength - value of type ULONG that specifies the size, in bytes, 
-                  of the new power setting value 
+    ValueLength - value of type ULONG that specifies the size, in bytes,
+                  of the new power setting value
     Context - the WDFDEVICE pointer context
 
   Return Value:
@@ -440,23 +431,22 @@ OnMonitorPowerSettingCallback(
         //
 
         WDF_DEVICE_POWER_POLICY_IDLE_SETTINGS_INIT(
-            &idleSettings, 
+            &idleSettings,
             IdleCannotWakeFromS0);
 
         idleSettings.IdleTimeoutType = SystemManagedIdleTimeoutWithHint;
 
         if (isMonitorOff)
-        { 
+        {
             idleSettings.IdleTimeout = IDLE_TIMEOUT_MONITOR_OFF;
         }
         else
         {
             idleSettings.IdleTimeout = IDLE_TIMEOUT_MONITOR_ON;
- 
         }
 
         status = WdfDeviceAssignS0IdleSettings(
-            Device, 
+            Device,
             &idleSettings);
 
         if (!NT_SUCCESS(status))
@@ -466,25 +456,24 @@ OnMonitorPowerSettingCallback(
                 TRACE_FLAG_WDFLOADING,
                 "Failed to assign S0 idle settings - %!STATUS!",
                 status);
-                
+
             goto exit;
         }
     }
 
 exit:
-    
+
     FuncExit(TRACE_FLAG_WDFLOADING);
- 
+
     return status;
 }
 
 NTSTATUS
 OnTargetConnect(
-    _In_  WDFDEVICE  SpbController,
-    _In_  SPBTARGET  SpbTarget
-    )
+    _In_ WDFDEVICE SpbController,
+    _In_ SPBTARGET SpbTarget)
 /*++
- 
+
   Routine Description:
 
     This routine is invoked whenever a peripheral driver opens
@@ -505,12 +494,12 @@ OnTargetConnect(
 {
     FuncEntry(TRACE_FLAG_SPBDDI);
 
-    PPBC_DEVICE pDevice  = GetDeviceContext(SpbController);
-    PPBC_TARGET pTarget  = GetTargetContext(SpbTarget);
-    
+    PPBC_DEVICE pDevice = GetDeviceContext(SpbController);
+    PPBC_TARGET pTarget = GetTargetContext(SpbTarget);
+
     NT_ASSERT(pDevice != NULL);
     NT_ASSERT(pTarget != NULL);
-    
+
     NTSTATUS status = STATUS_SUCCESS;
 
     //
@@ -528,9 +517,8 @@ OnTargetConnect(
 
     status = PbcTargetGetSettings(pDevice,
                                   params.ConnectionParameters,
-                                  &pTarget->Settings
-                                  );
-    
+                                  &pTarget->Settings);
+
     //
     // Initialize target context.
     //
@@ -548,20 +536,18 @@ OnTargetConnect(
             pTarget->Settings.Address,
             pDevice->FxDevice);
     }
-    
+
     FuncExit(TRACE_FLAG_SPBDDI);
 
     return status;
 }
 
-VOID
-OnControllerLock(
-    _In_  WDFDEVICE   SpbController,
-    _In_  SPBTARGET   SpbTarget,
-    _In_  SPBREQUEST  SpbRequest
-    )
+VOID OnControllerLock(
+    _In_ WDFDEVICE SpbController,
+    _In_ SPBTARGET SpbTarget,
+    _In_ SPBREQUEST SpbRequest)
 /*++
- 
+
   Routine Description:
 
     This routine is invoked whenever the controller is to
@@ -583,11 +569,11 @@ OnControllerLock(
 {
     FuncEntry(TRACE_FLAG_SPBDDI);
 
-    PPBC_DEVICE  pDevice  = GetDeviceContext(SpbController);
-    PPBC_TARGET  pTarget  = GetTargetContext(SpbTarget);
-    
-    NT_ASSERT(pDevice  != NULL);
-    NT_ASSERT(pTarget  != NULL);
+    PPBC_DEVICE pDevice = GetDeviceContext(SpbController);
+    PPBC_TARGET pTarget = GetTargetContext(SpbTarget);
+
+    NT_ASSERT(pDevice != NULL);
+    NT_ASSERT(pTarget != NULL);
 
     //
     // Acquire the device lock.
@@ -618,18 +604,16 @@ OnControllerLock(
     //
 
     SpbRequestComplete(SpbRequest, STATUS_SUCCESS);
-    
+
     FuncExit(TRACE_FLAG_SPBDDI);
 }
 
-VOID
-OnControllerUnlock(
-    _In_  WDFDEVICE   SpbController,
-    _In_  SPBTARGET   SpbTarget,
-    _In_  SPBREQUEST  SpbRequest
-    )
+VOID OnControllerUnlock(
+    _In_ WDFDEVICE SpbController,
+    _In_ SPBTARGET SpbTarget,
+    _In_ SPBREQUEST SpbRequest)
 /*++
- 
+
   Routine Description:
 
     This routine is invoked whenever the controller is to
@@ -651,11 +635,11 @@ OnControllerUnlock(
 {
     FuncEntry(TRACE_FLAG_SPBDDI);
 
-    PPBC_DEVICE  pDevice  = GetDeviceContext(SpbController);
-    PPBC_TARGET  pTarget  = GetTargetContext(SpbTarget);
-    
-    NT_ASSERT(pDevice  != NULL);
-    NT_ASSERT(pTarget  != NULL);
+    PPBC_DEVICE pDevice = GetDeviceContext(SpbController);
+    PPBC_TARGET pTarget = GetTargetContext(SpbTarget);
+
+    NT_ASSERT(pDevice != NULL);
+    NT_ASSERT(pTarget != NULL);
 
     //
     // Acquire the device lock.
@@ -663,9 +647,7 @@ OnControllerUnlock(
 
     WdfWaitLockAcquire(pDevice->Lock, NULL);
 
-    // TODO: Check if there is an active sequence
-    //       and if so perform any action necessary
-    //       to stop the transfer in process.
+    // Transfers are completed in QEMU device after they are started
 
     //
     // Remove current target.
@@ -674,7 +656,7 @@ OnControllerUnlock(
     NT_ASSERT(pDevice->pCurrentTarget == pTarget);
 
     pDevice->pCurrentTarget = NULL;
-    
+
     WdfWaitLockRelease(pDevice->Lock);
 
     Trace(
@@ -690,19 +672,17 @@ OnControllerUnlock(
     //
 
     SpbRequestComplete(SpbRequest, STATUS_SUCCESS);
-    
+
     FuncExit(TRACE_FLAG_SPBDDI);
 }
 
-VOID
-OnRead(
-    _In_  WDFDEVICE   SpbController,
-    _In_  SPBTARGET   SpbTarget,
-    _In_  SPBREQUEST  SpbRequest,
-    _In_  size_t      Length
-    )
+VOID OnRead(
+    _In_ WDFDEVICE SpbController,
+    _In_ SPBTARGET SpbTarget,
+    _In_ SPBREQUEST SpbRequest,
+    _In_ size_t Length)
 /*++
- 
+
   Routine Description:
 
     This routine sets up a read from the target device using
@@ -744,15 +724,13 @@ OnRead(
     FuncExit(TRACE_FLAG_SPBDDI);
 }
 
-VOID
-OnWrite(
-    _In_  WDFDEVICE   SpbController,
-    _In_  SPBTARGET   SpbTarget,
-    _In_  SPBREQUEST  SpbRequest,
-    _In_  size_t      Length
-    )
+VOID OnWrite(
+    _In_ WDFDEVICE SpbController,
+    _In_ SPBTARGET SpbTarget,
+    _In_ SPBREQUEST SpbRequest,
+    _In_ size_t Length)
 /*++
- 
+
   Routine Description:
 
     This routine sets up a write to the target device using
@@ -794,19 +772,17 @@ OnWrite(
     FuncExit(TRACE_FLAG_SPBDDI);
 }
 
-VOID
-OnSequence(
-    _In_  WDFDEVICE   SpbController,
-    _In_  SPBTARGET   SpbTarget,
-    _In_  SPBREQUEST  SpbRequest,
-    _In_  ULONG       TransferCount
-    )
+VOID OnSequence(
+    _In_ WDFDEVICE SpbController,
+    _In_ SPBTARGET SpbTarget,
+    _In_ SPBREQUEST SpbRequest,
+    _In_ ULONG TransferCount)
 /*++
- 
+
   Routine Description:
 
-    This routine sets up a sequence of reads and writes.  It 
-    validates parameters as necessary.  The request is only 
+    This routine sets up a sequence of reads and writes.  It
+    validates parameters as necessary.  The request is only
     completed if there is an error configuring the transfer.
 
   Arguments:
@@ -825,17 +801,17 @@ OnSequence(
 {
     FuncEntry(TRACE_FLAG_SPBDDI);
 
-    PPBC_DEVICE  pDevice  = GetDeviceContext(SpbController);
-    PPBC_TARGET  pTarget  = GetTargetContext(SpbTarget);
+    PPBC_DEVICE pDevice = GetDeviceContext(SpbController);
+    PPBC_TARGET pTarget = GetTargetContext(SpbTarget);
     PPBC_REQUEST pRequest = GetRequestContext(SpbRequest);
     BOOLEAN completeRequest = FALSE;
-    
-    NT_ASSERT(pDevice  != NULL);
-    NT_ASSERT(pTarget  != NULL);
+
+    NT_ASSERT(pDevice != NULL);
+    NT_ASSERT(pTarget != NULL);
     NT_ASSERT(pRequest != NULL);
-    
+
     NTSTATUS status = STATUS_SUCCESS;
-    
+
     //
     // Get request parameters.
     //
@@ -843,14 +819,14 @@ OnSequence(
     SPB_REQUEST_PARAMETERS params;
     SPB_REQUEST_PARAMETERS_INIT(&params);
     SpbRequestGetParameters(SpbRequest, &params);
-    
+
     NT_ASSERT(params.Position == SpbRequestSequencePositionSingle);
     NT_ASSERT(params.Type == SpbRequestTypeSequence);
 
     //
     // Initialize request context.
     //
-    
+
     pRequest->SpbRequest = SpbRequest;
     pRequest->Type = params.Type;
     pRequest->TotalInformation = 0;
@@ -871,14 +847,14 @@ OnSequence(
     //
     // Validate the request before beginning the transfer.
     //
-    
+
     status = PbcRequestValidate(pRequest);
 
     if (!NT_SUCCESS(status))
     {
         goto exit;
     }
-    
+
     //
     // Configure the request.
     //
@@ -888,8 +864,8 @@ OnSequence(
     if (!NT_SUCCESS(status))
     {
         Trace(
-            TRACE_LEVEL_ERROR, 
-            TRACE_FLAG_SPBDDI, 
+            TRACE_LEVEL_ERROR,
+            TRACE_FLAG_SPBDDI,
             "Error configuring request context for SPBREQUEST %p "
             "(SPBTARGET %p) - %!STATUS!",
             pRequest->SpbRequest,
@@ -911,28 +887,25 @@ OnSequence(
 
     NT_ASSERT(pDevice->pCurrentTarget == NULL);
     NT_ASSERT(pTarget->pCurrentRequest == NULL);
-    
+
     pDevice->pCurrentTarget = pTarget;
     pTarget->pCurrentRequest = pRequest;
-    
+
     //
     // Configure controller and kick-off read.
     // Request will be completed asynchronously.
     //
-    
+
     PbcRequestDoTransfer(pDevice, pRequest);
-    
-    // TODO: Remove this block. For the purpose of this 
-    //       skeleton sample, simply complete the request 
-    //       synchronously. This must be done outside of 
-    //       the locked code.
+
+    // TODO: We should be able to remove this loop and let the request complete later
     if (pRequest->bIoComplete)
     {
         completeRequest = TRUE;
     }
-    
+
     WdfWaitLockRelease(pDevice->Lock);
-    
+
     // The transfer was performed synchronously above. Complete the
     // request outside of the locked code.
     if (completeRequest)
@@ -948,23 +921,21 @@ exit:
             TRACE_LEVEL_ERROR,
             TRACE_FLAG_SPBDDI,
             "Error configuring sequence, completing "
-            "SPBREQUEST %p synchronously - %!STATUS!", 
+            "SPBREQUEST %p synchronously - %!STATUS!",
             pRequest->SpbRequest,
             status);
 
         SpbRequestComplete(SpbRequest, status);
     }
-    
+
     FuncExit(TRACE_FLAG_SPBDDI);
 }
 
-VOID
-OnOtherInCallerContext(
-    _In_  WDFDEVICE   SpbController,
-    _In_  WDFREQUEST  FxRequest
-    )
+VOID OnOtherInCallerContext(
+    _In_ WDFDEVICE SpbController,
+    _In_ WDFREQUEST FxRequest)
 /*++
- 
+
   Routine Description:
 
     This routine preprocesses custom IO requests before the framework
@@ -1007,8 +978,7 @@ OnOtherInCallerContext(
             TRACE_FLAG_SPBDDI,
             "FxRequest %p is of unsupported request type - %!STATUS!",
             FxRequest,
-            status
-            );
+            status);
         goto exit;
     }
 
@@ -1033,8 +1003,7 @@ OnOtherInCallerContext(
             "Failed to capture transfer list for custom SpbRequest %p"
             " - %!STATUS!",
             FxRequest,
-            status
-            );
+            status);
         goto exit;
     }
 
@@ -1055,26 +1024,24 @@ exit:
     {
         WdfRequestComplete(FxRequest, status);
     }
-    
+
     FuncExit(TRACE_FLAG_SPBDDI);
 }
 
-VOID
-OnOther(
-    _In_  WDFDEVICE   SpbController,
-    _In_  SPBTARGET   SpbTarget,
-    _In_  SPBREQUEST  SpbRequest,
-    _In_  size_t      OutputBufferLength,
-    _In_  size_t      InputBufferLength,
-    _In_  ULONG       IoControlCode
-    )
+VOID OnOther(
+    _In_ WDFDEVICE SpbController,
+    _In_ SPBTARGET SpbTarget,
+    _In_ SPBREQUEST SpbRequest,
+    _In_ size_t OutputBufferLength,
+    _In_ size_t InputBufferLength,
+    _In_ ULONG IoControlCode)
 /*++
- 
+
   Routine Description:
 
     This routine processes custom IO requests that are not natively
-    supported by the SPB framework extension. For requests using the 
-    SPB transfer list format, SpbRequestCaptureIoOtherTransferList 
+    supported by the SPB framework extension. For requests using the
+    SPB transfer list format, SpbRequestCaptureIoOtherTransferList
     must have been called in the driver's OnOtherInCallerContext routine.
 
   Arguments:
@@ -1094,7 +1061,7 @@ OnOther(
 --*/
 {
     FuncEntry(TRACE_FLAG_SPBDDI);
-    
+
     NTSTATUS status = STATUS_SUCCESS;
 
     UNREFERENCED_PARAMETER(SpbController);
@@ -1116,23 +1083,18 @@ OnOther(
     //       SpbRequestGetTransferParameters to retrieve each transfer
     //       descriptor.
     //
-    //       If this IOCTL uses some proprietary buffer formating 
+    //       If this IOCTL uses some proprietary buffer formating
     //       instead of SPB_TRANSFER_LIST, validate appropriately.
     //
     //    3. Setup the device, target, and request contexts as necessary,
     //       and program the hardware for the transfer.
     //
 
-
-    // TODO: Remove this block. For the purpose of this 
-    //       skeleton sample, simply complete the request 
-    //       synchronously. Note this must be done outside
-    //       of any locked code.
+    // TODO: Make sure this request is being completed by QEMU I2C controller
     SpbRequestComplete(SpbRequest, status);
-    
+
     FuncExit(TRACE_FLAG_SPBDDI);
 }
-
 
 /////////////////////////////////////////////////
 //
@@ -1147,15 +1109,14 @@ OnOther(
 
 BOOLEAN
 OnInterruptIsr(
-    _In_  WDFINTERRUPT Interrupt,
-    _In_  ULONG        MessageID
-    )
+    _In_ WDFINTERRUPT Interrupt,
+    _In_ ULONG MessageID)
 /*++
- 
+
   Routine Description:
 
     This routine responds to interrupts generated by the
-    controller. If one is recognized, it queues a DPC for 
+    controller. If one is recognized, it queues a DPC for
     processing. The interrupt is acknowledged and subsequent
     interrupts are temporarily disabled.
 
@@ -1180,7 +1141,7 @@ OnInterruptIsr(
 
     UNREFERENCED_PARAMETER(MessageID);
 
-    NT_ASSERT(pDevice  != NULL);
+    NT_ASSERT(pDevice != NULL);
 
     //
     // Queue a DPC if the device's interrupt
@@ -1207,11 +1168,11 @@ OnInterruptIsr(
         //
 
         interruptRecognized = TRUE;
-        
+
         pDevice->InterruptStatus |= (stat);
         ControllerDisableInterrupts(pDevice);
-        
-        if(!WdfInterruptQueueDpcForIsr(Interrupt))
+
+        if (!WdfInterruptQueueDpcForIsr(Interrupt))
         {
             Trace(
                 TRACE_LEVEL_INFORMATION,
@@ -1224,17 +1185,15 @@ OnInterruptIsr(
     }
 
     FuncExit(TRACE_FLAG_TRANSFER);
-    
+
     return interruptRecognized;
 }
 
-VOID
-OnInterruptDpc(
-    _In_  WDFINTERRUPT Interrupt,
-    _In_  WDFOBJECT    WdfDevice
-    )
+VOID OnInterruptDpc(
+    _In_ WDFINTERRUPT Interrupt,
+    _In_ WDFOBJECT WdfDevice)
 /*++
- 
+
   Routine Description:
 
     This routine processes interrupts from the controller.
@@ -1277,7 +1236,7 @@ OnInterruptDpc(
     //
 
     pTarget = pDevice->pCurrentTarget;
-    
+
     if (pTarget == NULL)
     {
         Trace(
@@ -1314,13 +1273,13 @@ OnInterruptDpc(
     //
 
     // TODO: Uncomment when using interrupts.
-    //WdfInterruptAcquireLock(Interrupt);
+    // WdfInterruptAcquireLock(Interrupt);
 
     stat = pDevice->InterruptStatus;
     pDevice->InterruptStatus = 0;
 
     // TODO: Uncomment when using interrupts.
-    //WdfInterruptReleaseLock(Interrupt);
+    // WdfInterruptReleaseLock(Interrupt);
 
     if (stat == 0)
     {
@@ -1352,7 +1311,7 @@ OnInterruptDpc(
     //
 
     // TODO: Uncomment when using interrupts.
-    //WdfInterruptAcquireLock(Interrupt);
+    // WdfInterruptAcquireLock(Interrupt);
 
     ULONG mask = PbcDeviceGetInterruptMask(pDevice);
 
@@ -1369,7 +1328,7 @@ OnInterruptDpc(
     }
 
     // TODO: Uncomment when using interrupts.
-    //WdfInterruptReleaseLock(Interrupt);
+    // WdfInterruptReleaseLock(Interrupt);
 
 exit:
 
@@ -1395,7 +1354,6 @@ exit:
     FuncExit(TRACE_FLAG_TRANSFER);
 }
 
-
 /////////////////////////////////////////////////
 //
 // PBC functions.
@@ -1404,12 +1362,11 @@ exit:
 
 NTSTATUS
 PbcTargetGetSettings(
-    _In_  PPBC_DEVICE                pDevice,
-    _In_  PVOID                      ConnectionParameters,
-    _Out_ PPBC_TARGET_SETTINGS       pSettings
-    )
+    _In_ PPBC_DEVICE pDevice,
+    _In_ PVOID ConnectionParameters,
+    _Out_ PPBC_TARGET_SETTINGS pSettings)
 /*++
- 
+
   Routine Description:
 
     This routine populates the target's settings.
@@ -1417,7 +1374,7 @@ PbcTargetGetSettings(
   Arguments:
 
     pDevice - a pointer to the PBC device context
-    ConnectionParameters - a pointer to a blob containing the 
+    ConnectionParameters - a pointer to a blob containing the
         connection parameters
     Settings - a pointer the the target's settings
 
@@ -1455,7 +1412,7 @@ PbcTargetGetSettings(
     }
 
     descriptor = (PPNP_SERIAL_BUS_DESCRIPTOR)
-        connection->ConnectionProperties;
+                     connection->ConnectionProperties;
 
     if (descriptor->SerialBusType != I2C_SERIAL_BUS_TYPE)
     {
@@ -1469,7 +1426,7 @@ PbcTargetGetSettings(
     }
 
     i2cDescriptor = (PPNP_I2C_SERIAL_BUS_DESCRIPTOR)
-        connection->ConnectionProperties;
+                        connection->ConnectionProperties;
 
     Trace(
         TRACE_LEVEL_INFORMATION,
@@ -1486,9 +1443,8 @@ PbcTargetGetSettings(
 
     // Address mode
     USHORT i2cFlags = i2cDescriptor->SerialBusDescriptor.TypeSpecificFlags;
-    pSettings->AddressMode = 
-        ((i2cFlags & I2C_SERIAL_BUS_SPECIFIC_FLAG_10BIT_ADDRESS) == 0) ? 
-            AddressMode7Bit : AddressMode10Bit;
+    pSettings->AddressMode =
+        ((i2cFlags & I2C_SERIAL_BUS_SPECIFIC_FLAG_10BIT_ADDRESS) == 0) ? AddressMode7Bit : AddressMode10Bit;
 
     // Clock speed
     pSettings->ConnectionSpeed = i2cDescriptor->ConnectionSpeed;
@@ -1500,7 +1456,7 @@ PbcTargetGetSettings(
 
 NTSTATUS
 PbcRequestValidate(
-    _In_  PPBC_REQUEST               pRequest)
+    _In_ PPBC_REQUEST pRequest)
 {
     FuncEntry(TRACE_FLAG_TRANSFER);
 
@@ -1520,22 +1476,22 @@ PbcRequestValidate(
         SPB_TRANSFER_DESCRIPTOR_INIT(&descriptor);
 
         SpbRequestGetTransferParameters(
-            pRequest->SpbRequest, 
-            i, 
-            &descriptor, 
+            pRequest->SpbRequest,
+            i,
+            &descriptor,
             nullptr);
 
         //
         // Validate the transfer length.
         //
-    
+
         if (descriptor.TransferLength > SI2C_MAX_TRANSFER_LENGTH)
         {
             status = STATUS_INVALID_PARAMETER;
 
             Trace(
-                TRACE_LEVEL_ERROR, 
-                TRACE_FLAG_TRANSFER, 
+                TRACE_LEVEL_ERROR,
+                TRACE_FLAG_TRANSFER,
                 "Transfer length %Iu is too large for controller driver, "
                 "max supported is %d (SPBREQUEST %p, index %lu) - %!STATUS!",
                 descriptor.TransferLength,
@@ -1555,15 +1511,13 @@ exit:
     return status;
 }
 
-VOID
-PbcRequestConfigureForNonSequence(
-    _In_  WDFDEVICE                  SpbController,
-    _In_  SPBTARGET                  SpbTarget,
-    _In_  SPBREQUEST                 SpbRequest,
-    _In_  size_t                     Length
-    )
+VOID PbcRequestConfigureForNonSequence(
+    _In_ WDFDEVICE SpbController,
+    _In_ SPBTARGET SpbTarget,
+    _In_ SPBREQUEST SpbRequest,
+    _In_ size_t Length)
 /*++
- 
+
   Routine Description:
 
     This is a generic helper routine used to configure
@@ -1587,19 +1541,19 @@ PbcRequestConfigureForNonSequence(
 {
     FuncEntry(TRACE_FLAG_TRANSFER);
 
-    PPBC_DEVICE  pDevice  = GetDeviceContext(SpbController);
-    PPBC_TARGET  pTarget  = GetTargetContext(SpbTarget);
+    PPBC_DEVICE pDevice = GetDeviceContext(SpbController);
+    PPBC_TARGET pTarget = GetTargetContext(SpbTarget);
     PPBC_REQUEST pRequest = GetRequestContext(SpbRequest);
     BOOLEAN completeRequest = FALSE;
-    
-    NT_ASSERT(pDevice  != NULL);
-    NT_ASSERT(pTarget  != NULL);
+
+    NT_ASSERT(pDevice != NULL);
+    NT_ASSERT(pTarget != NULL);
     NT_ASSERT(pRequest != NULL);
 
     UNREFERENCED_PARAMETER(Length);
 
     NTSTATUS status;
-    
+
     //
     // Get the request parameters.
     //
@@ -1611,7 +1565,7 @@ PbcRequestConfigureForNonSequence(
     //
     // Initialize request context.
     //
-    
+
     pRequest->SpbRequest = SpbRequest;
     pRequest->Type = params.Type;
     pRequest->SequencePosition = params.Position;
@@ -1623,29 +1577,29 @@ PbcRequestConfigureForNonSequence(
     //
     // Validate the request before beginning the transfer.
     //
-    
+
     status = PbcRequestValidate(pRequest);
 
     if (!NT_SUCCESS(status))
     {
         goto exit;
     }
-    
+
     //
     // Configure the request.
     //
 
     status = PbcRequestConfigureForIndex(
-        pRequest, 
+        pRequest,
         pRequest->TransferIndex);
 
     if (!NT_SUCCESS(status))
     {
         Trace(
-            TRACE_LEVEL_ERROR, 
-            TRACE_FLAG_SPBDDI, 
+            TRACE_LEVEL_ERROR,
+            TRACE_FLAG_SPBDDI,
             "Error configuring request context for SPBREQUEST %p (SPBTARGET %p)"
-            "- %!STATUS!", 
+            "- %!STATUS!",
             pRequest->SpbRequest,
             SpbTarget,
             status);
@@ -1665,46 +1619,46 @@ PbcRequestConfigureForNonSequence(
     //   - not single: ensure that the current target is the
     //                 same as this target
     //
-    
+
     if (params.Position == SpbRequestSequencePositionSingle)
-    {        
+    {
         NT_ASSERT(pDevice->pCurrentTarget == NULL);
     }
     else
-    {   
+    {
         NT_ASSERT(pDevice->pCurrentTarget == pTarget);
     }
-    
+
     //
     // Ensure there is not a current request.
     //
-    
+
     NT_ASSERT(pTarget->pCurrentRequest == NULL);
-    
+
     //
     // Update the device and target contexts.
     //
-    
+
     if (pRequest->SequencePosition == SpbRequestSequencePositionSingle)
     {
         pDevice->pCurrentTarget = pTarget;
     }
-    
+
     pTarget->pCurrentRequest = pRequest;
-    
+
     //
     // Configure controller and perform the transfer synchronously.
     //
-    
+
     PbcRequestDoTransfer(pDevice, pRequest);
-    
+
     if (pRequest->bIoComplete)
     {
         completeRequest = TRUE;
     }
 
     WdfWaitLockRelease(pDevice->Lock);
-    
+
     // The transfer was performed synchronously above. Complete the
     // request outside of the locked code.
     if (completeRequest)
@@ -1713,26 +1667,25 @@ PbcRequestConfigureForNonSequence(
     }
 
 exit:
-    
+
     if (!NT_SUCCESS(status))
     {
         SpbRequestComplete(SpbRequest, status);
     }
-    
+
     FuncExit(TRACE_FLAG_TRANSFER);
 }
 
 NTSTATUS
 PbcRequestConfigureForIndex(
-    _Inout_  PPBC_REQUEST            pRequest,
-    _In_     ULONG                   Index
-    )
+    _Inout_ PPBC_REQUEST pRequest,
+    _In_ ULONG Index)
 /*++
- 
+
   Routine Description:
 
     This is a helper routine used to configure the request
-    context and controller hardware for a transfer within a 
+    context and controller hardware for a transfer within a
     sequence. It validates parameters and retrieves
     the transfer buffer as necessary.
 
@@ -1750,7 +1703,7 @@ PbcRequestConfigureForIndex(
     FuncEntry(TRACE_FLAG_TRANSFER);
 
     NT_ASSERT(pRequest != NULL);
- 
+
     NTSTATUS status = STATUS_SUCCESS;
 
     //
@@ -1759,17 +1712,17 @@ PbcRequestConfigureForIndex(
 
     SPB_TRANSFER_DESCRIPTOR descriptor;
     PMDL pMdl;
-    
+
     SPB_TRANSFER_DESCRIPTOR_INIT(&descriptor);
 
     SpbRequestGetTransferParameters(
-        pRequest->SpbRequest, 
-        Index, 
-        &descriptor, 
+        pRequest->SpbRequest,
+        Index,
+        &descriptor,
         &pMdl);
-       
+
     NT_ASSERT(pMdl != NULL);
-    
+
     //
     // Configure request context.
     //
@@ -1786,7 +1739,7 @@ PbcRequestConfigureForIndex(
 
     if (pRequest->Type == SpbRequestTypeSequence)
     {
-        if   (pRequest->TransferCount == 1)
+        if (pRequest->TransferCount == 1)
         {
             pRequest->SequencePosition = SpbRequestSequencePositionSingle;
         }
@@ -1822,13 +1775,11 @@ PbcRequestConfigureForIndex(
     return status;
 }
 
-VOID
-PbcRequestDoTransfer(
-    _In_     PPBC_DEVICE             pDevice,
-    _In_     PPBC_REQUEST            pRequest
-    )
+VOID PbcRequestDoTransfer(
+    _In_ PPBC_DEVICE pDevice,
+    _In_ PPBC_REQUEST pRequest)
 /*++
- 
+
   Routine Description:
 
     This routine either starts the delay timer or
@@ -1847,8 +1798,8 @@ PbcRequestDoTransfer(
 --*/
 {
     FuncEntry(TRACE_FLAG_TRANSFER);
-    
-    NT_ASSERT(pDevice  != NULL);
+
+    NT_ASSERT(pDevice != NULL);
     NT_ASSERT(pRequest != NULL);
 
     //
@@ -1888,12 +1839,10 @@ PbcRequestDoTransfer(
     FuncExit(TRACE_FLAG_TRANSFER);
 }
 
-VOID
-PbcRequestComplete(
-    _In_     PPBC_REQUEST            pRequest
-    )
+VOID PbcRequestComplete(
+    _In_ PPBC_REQUEST pRequest)
 /*++
- 
+
   Routine Description:
 
     This routine completes the SpbRequest associated with
@@ -1926,7 +1875,7 @@ PbcRequestComplete(
         pRequest->TotalInformation);
 
     SpbRequestComplete(
-        pRequest->SpbRequest, 
+        pRequest->SpbRequest,
         pRequest->Status);
 
     FuncExit(TRACE_FLAG_TRANSFER);

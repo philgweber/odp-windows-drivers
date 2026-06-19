@@ -13,6 +13,9 @@ on:
       - '.github/workflows/build_*.yml'
   workflow_dispatch:
 
+concurrency:
+  cancel-in-progress: true
+
 jobs:
   discover-drivers:
     name: Discover Driver Projects
@@ -88,4 +91,4 @@ jobs:
             ${{ matrix.driver.directory }}/${{ matrix.platform }}/Release/**/*.inf
             ${{ matrix.driver.directory }}/${{ matrix.platform }}/Release/**/*.cat
           retention-days: 7
-          if-no-files-found: ignore
+          if-no-files-found: error

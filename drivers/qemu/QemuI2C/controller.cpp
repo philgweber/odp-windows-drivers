@@ -2,7 +2,7 @@
 
 Copyright (c) Microsoft Corporation.  All rights reserved.
 
-Module Name: 
+Module Name:
 
     controller.cpp
 
@@ -41,14 +41,14 @@ Revision History:
 
 #include "controller.tmh"
 
-const PBC_TRANSFER_SETTINGS g_TransferSettings[] = 
-{
-    // Bus condition        IsStart  IsEnd
-    {BusConditionDontCare,  FALSE,   FALSE}, // SpbRequestSequencePositionInvalid
-    {BusConditionFree,      TRUE,    TRUE},  // SpbRequestSequencePositionSingle
-    {BusConditionFree,      TRUE,    FALSE}, // SpbRequestSequencePositionFirst
-    {BusConditionBusy,      FALSE,   FALSE}, // SpbRequestSequencePositionContinue
-    {BusConditionBusy,      FALSE,   TRUE}   // SpbRequestSequencePositionLast
+const PBC_TRANSFER_SETTINGS g_TransferSettings[] =
+    {
+        // Bus condition        IsStart  IsEnd
+        {BusConditionDontCare, FALSE, FALSE}, // SpbRequestSequencePositionInvalid
+        {BusConditionFree, TRUE, TRUE},       // SpbRequestSequencePositionSingle
+        {BusConditionFree, TRUE, FALSE},      // SpbRequestSequencePositionFirst
+        {BusConditionBusy, FALSE, FALSE},     // SpbRequestSequencePositionContinue
+        {BusConditionBusy, FALSE, TRUE}       // SpbRequestSequencePositionLast
 };
 
 /////////////////////////////////////////////////
@@ -57,12 +57,9 @@ const PBC_TRANSFER_SETTINGS g_TransferSettings[] =
 //
 /////////////////////////////////////////////////
 
-_IRQL_requires_max_(PASSIVE_LEVEL)
-static
-VOID
-QemuI2cStall(
-    _In_ ULONG Microseconds
-    )
+_IRQL_requires_max_(PASSIVE_LEVEL) static VOID
+    QemuI2cStall(
+        _In_ ULONG Microseconds)
 /*++
 
   Routine Description:
@@ -94,14 +91,11 @@ QemuI2cStall(
     }
 }
 
-_IRQL_requires_max_(PASSIVE_LEVEL)
-static
-NTSTATUS
-QemuI2cPollStatus(
-    _In_  PPBC_DEVICE  pDevice,
-    _In_  ULONG        WaitBits,
-    _Out_ PULONG       pStatus
-    )
+_IRQL_requires_max_(PASSIVE_LEVEL) static NTSTATUS
+    QemuI2cPollStatus(
+        _In_ PPBC_DEVICE pDevice,
+        _In_ ULONG WaitBits,
+        _Out_ PULONG pStatus)
 /*++
 
   Routine Description:
@@ -150,15 +144,12 @@ QemuI2cPollStatus(
     }
 }
 
-_IRQL_requires_max_(PASSIVE_LEVEL)
-static
-NTSTATUS
-QemuI2cIssueCommand(
-    _In_  PPBC_DEVICE  pDevice,
-    _In_  ULONG        Command,
-    _In_  UCHAR        Data,
-    _Out_ PULONG       pStatus
-    )
+_IRQL_requires_max_(PASSIVE_LEVEL) static NTSTATUS
+    QemuI2cIssueCommand(
+        _In_ PPBC_DEVICE pDevice,
+        _In_ ULONG Command,
+        _In_ UCHAR Data,
+        _Out_ PULONG pStatus)
 /*++
 
   Routine Description:
@@ -198,15 +189,12 @@ QemuI2cIssueCommand(
     return status;
 }
 
-_IRQL_requires_max_(PASSIVE_LEVEL)
-static
-NTSTATUS
-QemuI2cStart(
-    _In_  PPBC_DEVICE  pDevice,
-    _In_  UCHAR        Address7Bit,
-    _In_  BOOLEAN      Read,
-    _Out_ PULONG       pStatus
-    )
+_IRQL_requires_max_(PASSIVE_LEVEL) static NTSTATUS
+    QemuI2cStart(
+        _In_ PPBC_DEVICE pDevice,
+        _In_ UCHAR Address7Bit,
+        _In_ BOOLEAN Read,
+        _Out_ PULONG pStatus)
 {
     UCHAR addressByte = (UCHAR)((Address7Bit << 1) | (Read ? 0x01 : 0x00));
     return QemuI2cIssueCommand(pDevice, QEMU_I2C_CMD_START, addressByte, pStatus);
@@ -218,12 +206,10 @@ QemuI2cStart(
 //
 /////////////////////////////////////////////////
 
-VOID
-ControllerInitialize(
-    _In_  PPBC_DEVICE  pDevice
-    )
+VOID ControllerInitialize(
+    _In_ PPBC_DEVICE pDevice)
 /*++
- 
+
   Routine Description:
 
     This routine initializes the controller hardware.
@@ -231,7 +217,7 @@ ControllerInitialize(
 --*/
 {
     FuncEntry(TRACE_FLAG_PBCLOADING);
-                        
+
     NT_ASSERT(pDevice != NULL);
 
     if (pDevice->pRegisters != NULL)
@@ -250,12 +236,10 @@ ControllerInitialize(
     FuncExit(TRACE_FLAG_PBCLOADING);
 }
 
-VOID
-ControllerUninitialize(
-    _In_  PPBC_DEVICE  pDevice
-    )
+VOID ControllerUninitialize(
+    _In_ PPBC_DEVICE pDevice)
 /*++
- 
+
   Routine Description:
 
     This routine uninitializes the controller hardware.
@@ -285,13 +269,11 @@ ControllerUninitialize(
 //
 /////////////////////////////////////////////////
 
-VOID
-ControllerConfigureForTransfer(
-    _In_  PPBC_DEVICE   pDevice,
-    _In_  PPBC_REQUEST  pRequest
-    )
+VOID ControllerConfigureForTransfer(
+    _In_ PPBC_DEVICE pDevice,
+    _In_ PPBC_REQUEST pRequest)
 /*++
- 
+
   Routine Description:
 
     This routine performs an entire (sub)transfer synchronously by
@@ -317,7 +299,7 @@ ControllerConfigureForTransfer(
     UCHAR address7Bit;
     BOOLEAN read;
 
-    NT_ASSERT(pDevice  != NULL);
+    NT_ASSERT(pDevice != NULL);
     NT_ASSERT(pRequest != NULL);
 
     pTarget = pDevice->pCurrentTarget;
@@ -344,9 +326,7 @@ ControllerConfigureForTransfer(
             "(WDFDEVICE %p)",
             pDevice->FxDevice);
 
-        pRequest->Status = STATUS_NOT_SUPPORTED;
-        pRequest->Information = 0;
-        ControllerCompleteTransfer(pDevice, pRequest, TRUE);
+        status = STATUS_NOT_SUPPORTED;
         goto exit;
     }
 
@@ -385,17 +365,13 @@ ControllerConfigureForTransfer(
             pDevice->FxDevice,
             status);
 
-        pRequest->Status = STATUS_IO_TIMEOUT;
-        pRequest->Information = 0;
-        ControllerCompleteTransfer(pDevice, pRequest, TRUE);
+        status = STATUS_IO_TIMEOUT;
         goto exit;
     }
 
     if (TestAnyBits(hwStatus, QEMU_I2C_STATUS_PROTO_ERR))
     {
-        pRequest->Status = STATUS_IO_DEVICE_ERROR;
-        pRequest->Information = 0;
-        ControllerCompleteTransfer(pDevice, pRequest, TRUE);
+        status = STATUS_IO_DEVICE_ERROR;
         goto exit;
     }
 
@@ -413,9 +389,7 @@ ControllerConfigureForTransfer(
             pTarget->Settings.Address,
             pDevice->FxDevice);
 
-        pRequest->Status = STATUS_NO_SUCH_DEVICE;
-        pRequest->Information = 0;
-        ControllerCompleteTransfer(pDevice, pRequest, TRUE);
+        status = STATUS_NO_SUCH_DEVICE;
         goto exit;
     }
 
@@ -435,8 +409,6 @@ ControllerConfigureForTransfer(
             pDevice->FxDevice,
             status);
 
-        pRequest->Status = status;
-        ControllerCompleteTransfer(pDevice, pRequest, TRUE);
         goto exit;
     }
 
@@ -459,30 +431,31 @@ ControllerConfigureForTransfer(
                 pDevice->FxDevice,
                 status);
 
-            pRequest->Status = STATUS_IO_TIMEOUT;
-            ControllerCompleteTransfer(pDevice, pRequest, TRUE);
+            status = STATUS_IO_TIMEOUT;
             goto exit;
         }
     }
 
-    //
-    // The (sub)transfer succeeded. Complete it and advance the sequence.
-    //
-
     ControllerCompleteTransfer(pDevice, pRequest, FALSE);
 
 exit:
+    // if abort set the status and information and complete the transfer aborted
+    if (status != STATUS_SUCCESS)
+    {
+        pRequest->Status = status;
+        pRequest->Information = 0;
+        ControllerCompleteTransfer(pDevice, pRequest, TRUE);
+    }
 
     FuncExit(TRACE_FLAG_TRANSFER);
 }
 
 NTSTATUS
 ControllerTransferData(
-    _In_  PPBC_DEVICE   pDevice,
-    _In_  PPBC_REQUEST  pRequest
-    )
+    _In_ PPBC_DEVICE pDevice,
+    _In_ PPBC_REQUEST pRequest)
 /*++
- 
+
   Routine Description:
 
     This routine transfers the data phase of a transfer to or from the
@@ -605,8 +578,7 @@ ControllerTransferData(
                 }
             }
 
-            chunk = (remaining > QEMU_I2C_RX_FIFO_SIZE) ?
-                QEMU_I2C_RX_FIFO_SIZE : (ULONG)remaining;
+            chunk = (remaining > QEMU_I2C_RX_FIFO_SIZE) ? QEMU_I2C_RX_FIFO_SIZE : (ULONG)remaining;
 
             //
             // Kick off the burst. The DATA field is (count - 1).
@@ -682,14 +654,12 @@ exit:
     return status;
 }
 
-VOID
-ControllerCompleteTransfer(
-    _In_  PPBC_DEVICE   pDevice,
-    _In_  PPBC_REQUEST  pRequest,
-    _In_  BOOLEAN       AbortSequence
-    )
+VOID ControllerCompleteTransfer(
+    _In_ PPBC_DEVICE pDevice,
+    _In_ PPBC_REQUEST pRequest,
+    _In_ BOOLEAN AbortSequence)
 /*++
- 
+
   Routine Description:
 
     This routine completes a data transfer. Unless there are
@@ -711,7 +681,7 @@ ControllerCompleteTransfer(
 {
     FuncEntry(TRACE_FLAG_TRANSFER);
 
-    NT_ASSERT(pDevice  != NULL);
+    NT_ASSERT(pDevice != NULL);
     NT_ASSERT(pRequest != NULL);
 
     Trace(
@@ -748,7 +718,7 @@ ControllerCompleteTransfer(
             //
 
             pRequest->Status = PbcRequestConfigureForIndex(
-                pRequest, 
+                pRequest,
                 pRequest->TransferIndex);
 
             if (NT_SUCCESS(pRequest->Status))
@@ -780,7 +750,7 @@ ControllerCompleteTransfer(
     //
     // Clear the controller's current target if any of
     //   1. request is type sequence
-    //   2. request position is single 
+    //   2. request position is single
     //      (did not come between lock/unlock)
     // Otherwise wait until unlock.
     //
@@ -815,11 +785,9 @@ exit:
 //
 /////////////////////////////////////////////////
 
-VOID
-ControllerEnableInterrupts(
-    _In_  PPBC_DEVICE   pDevice,
-    _In_  ULONG         InterruptMask
-    )
+VOID ControllerEnableInterrupts(
+    _In_ PPBC_DEVICE pDevice,
+    _In_ ULONG InterruptMask)
 {
     FuncEntry(TRACE_FLAG_TRANSFER);
 
@@ -833,10 +801,8 @@ ControllerEnableInterrupts(
     FuncExit(TRACE_FLAG_TRANSFER);
 }
 
-VOID
-ControllerDisableInterrupts(
-    _In_  PPBC_DEVICE   pDevice
-    )
+VOID ControllerDisableInterrupts(
+    _In_ PPBC_DEVICE pDevice)
 {
     FuncEntry(TRACE_FLAG_TRANSFER);
 
@@ -852,9 +818,8 @@ ControllerDisableInterrupts(
 
 ULONG
 ControllerGetInterruptStatus(
-    _In_  PPBC_DEVICE   pDevice,
-    _In_  ULONG         InterruptMask
-    )
+    _In_ PPBC_DEVICE pDevice,
+    _In_ ULONG InterruptMask)
 {
     FuncEntry(TRACE_FLAG_TRANSFER);
 
@@ -872,11 +837,9 @@ ControllerGetInterruptStatus(
     return interruptStatus;
 }
 
-VOID
-ControllerAcknowledgeInterrupts(
-    _In_  PPBC_DEVICE   pDevice,
-    _In_  ULONG         InterruptMask
-    )
+VOID ControllerAcknowledgeInterrupts(
+    _In_ PPBC_DEVICE pDevice,
+    _In_ ULONG InterruptMask)
 {
     FuncEntry(TRACE_FLAG_TRANSFER);
 
@@ -890,12 +853,10 @@ ControllerAcknowledgeInterrupts(
     FuncExit(TRACE_FLAG_TRANSFER);
 }
 
-VOID
-ControllerProcessInterrupts(
-    _In_  PPBC_DEVICE   pDevice,
-    _In_  PPBC_REQUEST  pRequest,
-    _In_  ULONG         InterruptStatus
-    )
+VOID ControllerProcessInterrupts(
+    _In_ PPBC_DEVICE pDevice,
+    _In_ PPBC_REQUEST pRequest,
+    _In_ ULONG InterruptStatus)
 /*++
 
   Routine Description:
