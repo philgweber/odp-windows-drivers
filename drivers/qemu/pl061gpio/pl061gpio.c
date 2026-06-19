@@ -14,7 +14,7 @@ Module Name:
 
 Abstract:
 
-    This sample implements a GPIO client driver for simulated GPIO (Pl061)
+    This sample implements a GPIO client driver for Pl061 GPIO
     controller.
 
     Note: DIRQL in the comments below refers to device IRQL, which is any
@@ -26,7 +26,6 @@ Environment:
     Kernel mode
 
 --*/
-
 
 //
 // The Pl061 controller has 4 GPIO banks, with banks consisting of
@@ -63,7 +62,6 @@ Environment:
 //      (i.e. whether the pin is high (0x1) or low (0x0)).
 //
 
-
 //
 // ------------------------------------------------------------------- Includes
 //
@@ -79,18 +77,18 @@ Environment:
 //
 
 //
-// Define total number of pins on the simulated GPIO controller.
+// Define total number of pins on the Pl061 GPIO controller.
 //
 
-#define SIM_GPIO_TOTAL_PINS (8)
-#define SIM_GPIO_PINS_PER_BANK (8)
-#define SIM_GPIO_TOTAL_BANKS (1)
+#define PL061_GPIO_TOTAL_PINS (8)
+#define PL061_GPIO_PINS_PER_BANK (8)
+#define PL061_GPIO_TOTAL_BANKS (1)
 
 //
 // Pool tag for Pl061 allocations.
 //
 
-#define SIM_GPIO_POOL_TAG '16LP'
+#define PL061_GPIO_POOL_TAG '16LP'
 
 //
 // Define that controls whether f-state based power management will be supported
@@ -115,9 +113,9 @@ Environment:
 
 #ifdef ENABLE_F_STATE_POWER_MGMT
 
-#define SIM_GPIO_F1_NOMINAL_POWER (0)
-#define SIM_GPIO_F1_RESIDENCY (8*60*60)          // 8hrs
-#define SIM_GPIO_F1_TRANSITION (1*60*60)         // 1hr
+#define PL061_GPIO_F1_NOMINAL_POWER (0)
+#define PL061_GPIO_F1_RESIDENCY (8 * 60 * 60)  // 8hrs
+#define PL061_GPIO_F1_TRANSITION (1 * 60 * 60) // 1hr
 
 #endif
 
@@ -129,62 +127,63 @@ Environment:
 
 //
 // Determine whether the given pin is reserved or not. Currently no pins are
-// reserved on the simulated GPIO controller.
+// reserved on the Pl061 GPIO controller.
 //
 
-__pragma(warning(disable: 4127))        // conditional expression is a constant
+__pragma(warning(disable : 4127)) // conditional expression is a constant
 
-//
-// ---------------------------------------------------------------------- Types
-//
+    //
+    // ---------------------------------------------------------------------- Types
+    //
 
-//
-// Define the registers within the PL061 controller. There are 32 pins per
-// controller. Note this is a logical device and thus may correspond to a
-// physical bank or module if the GPIO controller in hardware has more than
-// 32 pins.
-//
+    //
+    // Define the registers within the PL061 controller. There are 32 pins per
+    // controller. Note this is a logical device and thus may correspond to a
+    // physical bank or module if the GPIO controller in hardware has more than
+    // 32 pins.
+    //
 
-
-
-typedef struct _SIM_GPIO_REGISTERS {
+    typedef struct _PL061_GPIO_REGISTERS
+{
     // ARM PL061 GPIO controller actual hardware register layout.
     // The PL061 registers are at specific offsets and should not be accessed
-    // sequentially as the Pl061 simulation did.
+    // sequentially as the gpio simulation did.
     // We define only the registers we use and handle offsets explicitly.
-    ULONG GPIODATA;               // @ 0x000-0x3FC (8 offset for each pin)
-    ULONG padding1[256 - 1];      // Padding to 0x400
-    ULONG GPIODIR;                // @ 0x400 (direction: 1=output, 0=input)
-    ULONG GPIOIS;                 // @ 0x404 (interrupt sense: 1=level, 0=edge)
-    ULONG GPIOIBE;                // @ 0x408 (both edges: 1=both, 0=single)
-    ULONG GPIOIEV;                // @ 0x40C (interrupt event: 1=rising/high, 0=falling/low)
-    ULONG GPIOIE;                 // @ 0x410 (interrupt enable)
-    ULONG GPIORIS;                // @ 0x414 (raw interrupt status)
-    ULONG GPIOMIS;                // @ 0x418 (masked interrupt status, read-only)
-    ULONG GPIOIC;                 // @ 0x41C (interrupt clear, write-1-to-clear)
-    ULONG GPIOCR;                 // @ 0x420 (commit register)
-} SIM_GPIO_REGISTERS, *PSIM_GPIO_REGISTERS;
+    ULONG GPIODATA;          // @ 0x000-0x3FC (8 offset for each pin)
+    ULONG padding1[256 - 1]; // Padding to 0x400
+    ULONG GPIODIR;           // @ 0x400 (direction: 1=output, 0=input)
+    ULONG GPIOIS;            // @ 0x404 (interrupt sense: 1=level, 0=edge)
+    ULONG GPIOIBE;           // @ 0x408 (both edges: 1=both, 0=single)
+    ULONG GPIOIEV;           // @ 0x40C (interrupt event: 1=rising/high, 0=falling/low)
+    ULONG GPIOIE;            // @ 0x410 (interrupt enable)
+    ULONG GPIORIS;           // @ 0x414 (raw interrupt status)
+    ULONG GPIOMIS;           // @ 0x418 (masked interrupt status, read-only)
+    ULONG GPIOIC;            // @ 0x41C (interrupt clear, write-1-to-clear)
+    ULONG GPIOCR;            // @ 0x420 (commit register)
+} PL061_GPIO_REGISTERS, *PPL061_GPIO_REGISTERS;
 
-typedef struct _SIM_GPIO_BANK {
+typedef struct _PL061_GPIO_BANK
+{
     LARGE_INTEGER PhysicalBaseAddress;
-    PSIM_GPIO_REGISTERS Registers;
+    PPL061_GPIO_REGISTERS Registers;
     ULONG Length;
-    SIM_GPIO_REGISTERS SavedContext;
-} SIM_GPIO_BANK, *PSIM_GPIO_BANK;
+    PL061_GPIO_REGISTERS SavedContext;
+} PL061_GPIO_BANK, *PPL061_GPIO_BANK;
 
 //
 // The PL061 client driver device extension.
 //
 
-typedef struct _SIM_GPIO_CONTEXT {
+typedef struct _PL061_GPIO_CONTEXT
+{
     USHORT TotalPins;
     LARGE_INTEGER PhysicalBaseAddress;
-    PSIM_GPIO_REGISTERS ControllerBase;
+    PPL061_GPIO_REGISTERS ControllerBase;
     ULONG Length;
-    SIM_GPIO_BANK Banks[SIM_GPIO_TOTAL_BANKS];
-} SIM_GPIO_CONTEXT, *PSIM_GPIO_CONTEXT;
+    PL061_GPIO_BANK Banks[PL061_GPIO_TOTAL_BANKS];
+} PL061_GPIO_CONTEXT, *PPL061_GPIO_CONTEXT;
 
-SIM_GPIO_REGISTERS GlobalGpioRegisters[SIM_GPIO_TOTAL_BANKS] = {0};
+PL061_GPIO_REGISTERS GlobalGpioRegisters[PL061_GPIO_TOTAL_BANKS] = {0};
 
 //
 // ----------------------------------------------------------------- Prototypes
@@ -202,10 +201,10 @@ EVT_WDF_DRIVER_DEVICE_ADD Pl061EvtDeviceAdd;
 GPIO_CLIENT_PREPARE_CONTROLLER Pl061PrepareController;
 GPIO_CLIENT_RELEASE_CONTROLLER Pl061ReleaseController;
 GPIO_CLIENT_QUERY_CONTROLLER_BASIC_INFORMATION
-    Pl061QueryControllerBasicInformation;
+Pl061QueryControllerBasicInformation;
 
 GPIO_CLIENT_QUERY_SET_CONTROLLER_INFORMATION
-    Pl061QuerySetControllerInformation;
+Pl061QuerySetControllerInformation;
 
 GPIO_CLIENT_START_CONTROLLER Pl061StartController;
 GPIO_CLIENT_STOP_CONTROLLER Pl061StopController;
@@ -257,10 +256,9 @@ GPIO_CLIENT_RESTORE_BANK_HARDWARE_CONTEXT Pl061RestoreBankHardwareContext;
 //
 
 NTSTATUS
-DriverEntry (
-    _In_ PDRIVER_OBJECT  DriverObject,
-    _In_ PUNICODE_STRING RegistryPath
-    )
+DriverEntry(
+    _In_ PDRIVER_OBJECT DriverObject,
+    _In_ PUNICODE_STRING RegistryPath)
 
 /*++
 
@@ -310,7 +308,8 @@ Return Value:
                              &DriverConfig,
                              &Driver);
 
-    if (!NT_SUCCESS(Status)) {
+    if (!NT_SUCCESS(Status))
+    {
         TraceEvents(TRACE_LEVEL_ERROR,
                     TRACE_FLAG_INIT,
                     "%s: WdfDriverCreate failed, status=0x%08X",
@@ -332,7 +331,7 @@ Return Value:
     // Initialize the device context size.
     //
 
-    RegistrationPacket.ControllerContextSize = sizeof(SIM_GPIO_CONTEXT);
+    RegistrationPacket.ControllerContextSize = sizeof(PL061_GPIO_CONTEXT);
 
     //
     // General interfaces.
@@ -408,14 +407,17 @@ Return Value:
     //
 
     Status = GPIO_CLX_RegisterClient(Driver, &RegistrationPacket, RegistryPath);
-    if (!NT_SUCCESS(Status)) {
+    if (!NT_SUCCESS(Status))
+    {
         TraceEvents(TRACE_LEVEL_ERROR,
                     TRACE_FLAG_INIT,
                     "%s: GPIO_CLX_RegisterClient failed, status=0x%08X",
                     __FUNCTION__,
                     Status);
         WPP_CLEANUP(DriverObject);
-    } else {
+    }
+    else
+    {
         TraceEvents(TRACE_LEVEL_INFORMATION,
                     TRACE_FLAG_INIT,
                     "%s: GPIO client registered successfully",
@@ -426,10 +428,8 @@ DriverEntryEnd:
     return Status;
 }
 
-VOID
-Pl061EvtDriverUnload (
-    _In_ WDFDRIVER Driver
-    )
+VOID Pl061EvtDriverUnload(
+    _In_ WDFDRIVER Driver)
 
 /*++
 
@@ -467,10 +467,9 @@ Return Value:
 }
 
 NTSTATUS
-Pl061EvtDeviceAdd (
+Pl061EvtDeviceAdd(
     _In_ WDFDRIVER Driver,
-    _Inout_ PWDFDEVICE_INIT DeviceInit
-    )
+    _Inout_ PWDFDEVICE_INIT DeviceInit)
 
 /*++
 
@@ -479,7 +478,7 @@ Routine Description:
     This routine is the AddDevice entry point for the client driver. This
     routine is called by the framework in response to AddDevice call from the
     PnP manager. It will create and initialize the device object to represent
-    a new instance of the simulated GPIO controller.
+    a new instance of the Pl061 GPIO controller.
 
 Arguments:
 
@@ -512,9 +511,10 @@ Return Value:
     //
 
     Status = GPIO_CLX_ProcessAddDevicePreDeviceCreate(Driver,
-                                                       DeviceInit,
-                                                       &FdoAttributes);
-    if (!NT_SUCCESS(Status)) {
+                                                      DeviceInit,
+                                                      &FdoAttributes);
+    if (!NT_SUCCESS(Status))
+    {
         TraceEvents(TRACE_LEVEL_ERROR,
                     TRACE_FLAG_PNP,
                     "%s: PreDeviceCreate failed, status=0x%08X",
@@ -528,7 +528,8 @@ Return Value:
     //
 
     Status = WdfDeviceCreate(&DeviceInit, &FdoAttributes, &Device);
-    if (!NT_SUCCESS(Status)) {
+    if (!NT_SUCCESS(Status))
+    {
         TraceEvents(TRACE_LEVEL_ERROR,
                     TRACE_FLAG_PNP,
                     "%s: WdfDeviceCreate failed, status=0x%08X",
@@ -542,7 +543,8 @@ Return Value:
     //
 
     Status = GPIO_CLX_ProcessAddDevicePostDeviceCreate(Driver, Device);
-    if (!NT_SUCCESS(Status)) {
+    if (!NT_SUCCESS(Status))
+    {
         TraceEvents(TRACE_LEVEL_ERROR,
                     TRACE_FLAG_PNP,
                     "%s: PostDeviceCreate failed, status=0x%08X",
@@ -561,10 +563,9 @@ EvtDeviceAddEnd:
 }
 
 _IRQL_requires_(PASSIVE_LEVEL)
-VOID
-Pl061pUnmapControllerBase (
-    _In_ PSIM_GPIO_CONTEXT GpioContext
-    )
+    VOID
+    Pl061pUnmapControllerBase(
+        _In_ PPL061_GPIO_CONTEXT GpioContext)
 
 /*++
 
@@ -589,12 +590,13 @@ Return Value:
 {
 
     if ((GpioContext->ControllerBase != NULL) &&
-        (GpioContext->ControllerBase != GlobalGpioRegisters)) {
+        (GpioContext->ControllerBase != GlobalGpioRegisters))
+    {
         MmUnmapIoSpace(GpioContext->ControllerBase, GpioContext->Length);
         GpioContext->ControllerBase = NULL;
     }
 }
-    
+
 //
 // ---------------------------------------------------------- General intefaces
 //
@@ -602,19 +604,18 @@ Return Value:
 _Must_inspect_result_
 _IRQL_requires_(PASSIVE_LEVEL)
 NTSTATUS
-Pl061PrepareController (
+Pl061PrepareController(
     _In_ WDFDEVICE Device,
     _In_ PVOID Context,
     _In_ WDFCMRESLIST ResourcesRaw,
-    _In_ WDFCMRESLIST ResourcesTranslated
-    )
+    _In_ WDFCMRESLIST ResourcesTranslated)
 
 /*++
 
 Routine Description:
 
     This routine is called by the GPIO class extension to prepare the
-    simulated GPIO controller for use.
+    Pl061 GPIO controller for use.
 
     N.B. This function is not marked pageable because this function is in
          the device power up path.
@@ -642,8 +643,8 @@ Return Value:
 
     BANK_ID BankId;
     PCM_PARTIAL_RESOURCE_DESCRIPTOR Descriptor;
-    PSIM_GPIO_BANK GpioBank;
-    PSIM_GPIO_CONTEXT GpioContext;
+    PPL061_GPIO_BANK GpioBank;
+    PPL061_GPIO_CONTEXT GpioContext;
     ULONG Index;
     ULONG InterruptResourceCount;
     ULONG MemoryResourceCount;
@@ -655,9 +656,9 @@ Return Value:
     UNREFERENCED_PARAMETER(Device);
     UNREFERENCED_PARAMETER(ResourcesRaw);
 
-    GpioContext = (PSIM_GPIO_CONTEXT)Context;
-    RtlZeroMemory(GpioContext, sizeof(SIM_GPIO_CONTEXT));
-    GpioContext->TotalPins = SIM_GPIO_TOTAL_PINS;
+    GpioContext = (PPL061_GPIO_CONTEXT)Context;
+    RtlZeroMemory(GpioContext, sizeof(PL061_GPIO_CONTEXT));
+    GpioContext->TotalPins = PL061_GPIO_TOTAL_PINS;
 
     TraceEvents(TRACE_LEVEL_INFORMATION,
                 TRACE_FLAG_GPIO,
@@ -674,22 +675,26 @@ Return Value:
     MemoryResourceCount = 0;
     ResourceCount = WdfCmResourceListGetCount(ResourcesTranslated);
     Status = STATUS_SUCCESS;
-    for (Index = 0; Index < ResourceCount; Index += 1) {
+    for (Index = 0; Index < ResourceCount; Index += 1)
+    {
         Descriptor = WdfCmResourceListGetDescriptor(ResourcesTranslated, Index);
-        switch(Descriptor->Type) {
+        switch (Descriptor->Type)
+        {
 
-        //
-        // The memory resource supplies the physical register base for the GPIO
-        // controller. Map it virtually as non-cached.
-        //
+            //
+            // The memory resource supplies the physical register base for the GPIO
+            // controller. Map it virtually as non-cached.
+            //
 
         case CmResourceTypeMemory:
-            if (MemoryResourceCount == 0) {
-                RequiredSize = SIM_GPIO_TOTAL_BANKS * sizeof(SIM_GPIO_REGISTERS);
+            if (MemoryResourceCount == 0)
+            {
+                RequiredSize = PL061_GPIO_TOTAL_BANKS * sizeof(PL061_GPIO_REGISTERS);
 
                 NT_ASSERT(Descriptor->u.Memory.Length >= RequiredSize);
 
-                if (Descriptor->u.Memory.Length < RequiredSize) {
+                if (Descriptor->u.Memory.Length < RequiredSize)
+                {
                     Status = STATUS_UNSUCCESSFUL;
                     TraceEvents(TRACE_LEVEL_ERROR,
                                 TRACE_FLAG_GPIO,
@@ -702,7 +707,7 @@ Return Value:
 
                 GpioContext->PhysicalBaseAddress = Descriptor->u.Memory.Start;
                 GpioContext->ControllerBase =
-                    (PSIM_GPIO_REGISTERS)MmMapIoSpaceEx(
+                    (PPL061_GPIO_REGISTERS)MmMapIoSpaceEx(
                         Descriptor->u.Memory.Start,
                         RequiredSize,
                         PAGE_NOCACHE | PAGE_READWRITE);
@@ -711,7 +716,8 @@ Return Value:
                 // Fail initialization if mapping of the memory region failed.
                 //
 
-                if (GpioContext->ControllerBase == NULL) {
+                if (GpioContext->ControllerBase == NULL)
+                {
                     Status = STATUS_UNSUCCESSFUL;
                     TraceEvents(TRACE_LEVEL_ERROR,
                                 TRACE_FLAG_GPIO,
@@ -727,22 +733,22 @@ Return Value:
             MemoryResourceCount += 1;
             break;
 
-        //
-        // IO port resources are unexpected, fail initialization.
-        //
+            //
+            // IO port resources are unexpected, fail initialization.
+            //
 
         case CmResourceTypePort:
             Status = STATUS_UNSUCCESSFUL;
             break;
 
-        //
-        // Interrupt resource which supplies the GPIO controller interrupt
-        // (that connects to the GIC).
-        //
-        // N.B. Connecting of the interrupt is handled by the GPIO class
-        //      extension. Only ensure that appropriate number of interrupts
-        //      were described.
-        //
+            //
+            // Interrupt resource which supplies the GPIO controller interrupt
+            // (that connects to the GIC).
+            //
+            // N.B. Connecting of the interrupt is handled by the GPIO class
+            //      extension. Only ensure that appropriate number of interrupts
+            //      were described.
+            //
 
         case CmResourceTypeInterrupt:
             InterruptResourceCount += 1;
@@ -757,21 +763,18 @@ Return Value:
             break;
         }
 
-        if (!NT_SUCCESS(Status)) {
+        if (!NT_SUCCESS(Status))
+        {
             goto PrepareControllerEnd;
         }
     }
 
     //
-    // NOTE: As PL061 is not a real hardware device, it doesn't really have
-    //       any physical registers. For test purposes, fake the GPIO registers
-    //       using a software defined global structure. This should NOT be done
-    //       for a real GPIO controller
-    //
-    // BEGIN: PL061 HACK.
+    // GPIO's are routed through socket to external QEMU instances
     //
 
-    if (MemoryResourceCount == 0) {
+    if (MemoryResourceCount == 0)
+    {
         GpioContext->ControllerBase = GlobalGpioRegisters;
         MemoryResourceCount = 1;
         TraceEvents(TRACE_LEVEL_WARNING,
@@ -781,16 +784,13 @@ Return Value:
     }
 
     //
-    // END: PL061 HACK.
-    //
-
-    //
     // Fail initialization if minimum number of interrupt
     // and memory resources were not described correctly.
     //
 
-    if ((InterruptResourceCount < SIM_GPIO_TOTAL_BANKS) ||
-        (MemoryResourceCount < 1)) {
+    if ((InterruptResourceCount < PL061_GPIO_TOTAL_BANKS) ||
+        (MemoryResourceCount < 1))
+    {
         Status = STATUS_UNSUCCESSFUL;
         TraceEvents(TRACE_LEVEL_ERROR,
                     TRACE_FLAG_GPIO,
@@ -805,22 +805,26 @@ Return Value:
     // Initialize the base address of registers per bank.
     //
 
-    for (BankId = 0; BankId < SIM_GPIO_TOTAL_BANKS; BankId += 1) {
+    for (BankId = 0; BankId < PL061_GPIO_TOTAL_BANKS; BankId += 1)
+    {
         GpioBank = &GpioContext->Banks[BankId];
-        Offset = BankId * sizeof(SIM_GPIO_REGISTERS);
+        Offset = BankId * sizeof(PL061_GPIO_REGISTERS);
         GpioBank->Registers = Add2Ptr(GpioContext->ControllerBase, Offset);
-        GpioBank->Length = sizeof(SIM_GPIO_REGISTERS);
+        GpioBank->Length = sizeof(PL061_GPIO_REGISTERS);
     }
 
 PrepareControllerEnd:
-    if (!NT_SUCCESS(Status)) {
+    if (!NT_SUCCESS(Status))
+    {
         TraceEvents(TRACE_LEVEL_ERROR,
                     TRACE_FLAG_GPIO,
                     "%s: prepare failed, status=0x%08X",
                     __FUNCTION__,
                     Status);
         Pl061pUnmapControllerBase(GpioContext);
-    } else {
+    }
+    else
+    {
         TraceEvents(TRACE_LEVEL_INFORMATION,
                     TRACE_FLAG_GPIO,
                     "%s: prepare completed successfully",
@@ -833,10 +837,9 @@ PrepareControllerEnd:
 _Must_inspect_result_
 _IRQL_requires_(PASSIVE_LEVEL)
 NTSTATUS
-Pl061ReleaseController (
+Pl061ReleaseController(
     _In_ WDFDEVICE Device,
-    _In_ PVOID Context
-    )
+    _In_ PVOID Context)
 
 /*++
 
@@ -870,17 +873,16 @@ Return Value:
     //      extension.
     //
 
-    Pl061pUnmapControllerBase((PSIM_GPIO_CONTEXT)Context);
+    Pl061pUnmapControllerBase((PPL061_GPIO_CONTEXT)Context);
     return STATUS_SUCCESS;
 }
 
 _Must_inspect_result_
 _IRQL_requires_(PASSIVE_LEVEL)
 NTSTATUS
-Pl061QueryControllerBasicInformation (
+Pl061QueryControllerBasicInformation(
     _In_ PVOID Context,
-    _Out_ PCLIENT_CONTROLLER_BASIC_INFORMATION ControllerInformation
-    )
+    _Out_ PCLIENT_CONTROLLER_BASIC_INFORMATION ControllerInformation)
 
 /*++
 
@@ -906,7 +908,7 @@ Return Value:
 
 {
 
-    PSIM_GPIO_CONTEXT GpioContext;
+    PPL061_GPIO_CONTEXT GpioContext;
 
     ControllerInformation->Version = GPIO_CONTROLLER_BASIC_INFORMATION_VERSION;
     ControllerInformation->Size = sizeof(CLIENT_CONTROLLER_BASIC_INFORMATION);
@@ -915,9 +917,9 @@ Return Value:
     // Specify the number of pins on the PL061 controller.
     //
 
-    GpioContext = (PSIM_GPIO_CONTEXT)Context;
+    GpioContext = (PPL061_GPIO_CONTEXT)Context;
     ControllerInformation->TotalPins = GpioContext->TotalPins;
-    ControllerInformation->NumberOfPinsPerBank = SIM_GPIO_PINS_PER_BANK;
+    ControllerInformation->NumberOfPinsPerBank = PL061_GPIO_PINS_PER_BANK;
 
     //
     // Indicate that the GPIO controller is memory-mapped and thus can be
@@ -1006,11 +1008,10 @@ Return Value:
 _Must_inspect_result_
 _IRQL_requires_(PASSIVE_LEVEL)
 NTSTATUS
-Pl061QuerySetControllerInformation (
+Pl061QuerySetControllerInformation(
     _In_ PVOID Context,
     _In_ PCLIENT_CONTROLLER_QUERY_SET_INFORMATION_INPUT InputBuffer,
-    _Out_opt_ PCLIENT_CONTROLLER_QUERY_SET_INFORMATION_OUTPUT OutputBuffer
-    )
+    _Out_opt_ PCLIENT_CONTROLLER_QUERY_SET_INFORMATION_OUTPUT OutputBuffer)
 
 /*++
 
@@ -1044,12 +1045,14 @@ Return Value:
 
     UNREFERENCED_PARAMETER(Context);
 
-    if((InputBuffer == NULL) || (OutputBuffer == NULL)) {
+    if ((InputBuffer == NULL) || (OutputBuffer == NULL))
+    {
         Status = STATUS_NOT_SUPPORTED;
         goto QuerySetControllerInformationEnd;
     }
 
-    if (InputBuffer->RequestType != QueryBankPowerInformation) {
+    if (InputBuffer->RequestType != QueryBankPowerInformation)
+    {
         Status = STATUS_NOT_SUPPORTED;
         goto QuerySetControllerInformationEnd;
     }
@@ -1074,12 +1077,12 @@ Return Value:
     //
 
     F1Parameters = &OutputBuffer->BankPowerInformation.F1IdleStateParameters;
-    F1Parameters->NominalPower = SIM_GPIO_F1_NOMINAL_POWER;
+    F1Parameters->NominalPower = PL061_GPIO_F1_NOMINAL_POWER;
     F1Parameters->ResidencyRequirement =
-        WDF_ABS_TIMEOUT_IN_SEC(SIM_GPIO_F1_RESIDENCY);
+        WDF_ABS_TIMEOUT_IN_SEC(PL061_GPIO_F1_RESIDENCY);
 
     F1Parameters->TransitionLatency =
-        WDF_ABS_TIMEOUT_IN_SEC(SIM_GPIO_F1_TRANSITION);
+        WDF_ABS_TIMEOUT_IN_SEC(PL061_GPIO_F1_TRANSITION);
 
     Status = STATUS_SUCCESS;
 
@@ -1087,21 +1090,19 @@ QuerySetControllerInformationEnd:
     return Status;
 }
 
-
 _Must_inspect_result_
 _IRQL_requires_(PASSIVE_LEVEL)
 NTSTATUS
-Pl061StartController (
+Pl061StartController(
     _In_ PVOID Context,
     _In_ BOOLEAN RestoreContext,
-    _In_ WDF_POWER_DEVICE_STATE PreviousPowerState
-    )
+    _In_ WDF_POWER_DEVICE_STATE PreviousPowerState)
 
 /*++
 
 Routine Description:
 
-    This routine starts the simulated GPIO controller. This routine is
+    This routine starts the Pl061 GPIO controller. This routine is
     responsible for configuring all the pins to their default modes.
 
     N.B. This function is not marked pageable because this function is in
@@ -1127,11 +1128,11 @@ Return Value:
 {
 
     BANK_ID BankId;
-    PSIM_GPIO_BANK GpioBank;
-    PSIM_GPIO_CONTEXT GpioContext;
+    PPL061_GPIO_BANK GpioBank;
+    PPL061_GPIO_CONTEXT GpioContext;
     ULONG PinValue;
     GPIO_SAVE_RESTORE_BANK_HARDWARE_CONTEXT_PARAMETERS RestoreParameters;
-    PSIM_GPIO_REGISTERS Pl061Registers;
+    PPL061_GPIO_REGISTERS Pl061Registers;
 
     UNREFERENCED_PARAMETER(PreviousPowerState);
 
@@ -1159,34 +1160,38 @@ Return Value:
     // power state.
     //
 
-    GpioContext = (PSIM_GPIO_CONTEXT)Context;
-    if (RestoreContext == FALSE) {
-        for (BankId = 0; BankId < SIM_GPIO_TOTAL_BANKS; BankId += 1) {
+    GpioContext = (PPL061_GPIO_CONTEXT)Context;
+    if (RestoreContext == FALSE)
+    {
+        for (BankId = 0; BankId < PL061_GPIO_TOTAL_BANKS; BankId += 1)
+        {
             GpioBank = &GpioContext->Banks[BankId];
             Pl061Registers = GpioBank->Registers;
 
             // PL061 reset-compatible defaults relevant to GPIOClx operation.
             // Initialize to hardware reset state.
-            WRITE_REGISTER_ULONG(&Pl061Registers->GPIOIE, 0);      // Disable interrupts
-            WRITE_REGISTER_ULONG(&Pl061Registers->GPIORIS, 0);     // Clear status
-            WRITE_REGISTER_ULONG(&Pl061Registers->GPIOIS, 0);      // Edge-triggered
-            WRITE_REGISTER_ULONG(&Pl061Registers->GPIOIBE, 0);     // Single edge
-            WRITE_REGISTER_ULONG(&Pl061Registers->GPIOIEV, 0);     // Falling/low
-            WRITE_REGISTER_ULONG(&Pl061Registers->GPIODIR, 0);     // All inputs
+            WRITE_REGISTER_ULONG(&Pl061Registers->GPIOIE, 0);  // Disable interrupts
+            WRITE_REGISTER_ULONG(&Pl061Registers->GPIORIS, 0); // Clear status
+            WRITE_REGISTER_ULONG(&Pl061Registers->GPIOIS, 0);  // Edge-triggered
+            WRITE_REGISTER_ULONG(&Pl061Registers->GPIOIBE, 0); // Single edge
+            WRITE_REGISTER_ULONG(&Pl061Registers->GPIOIEV, 0); // Falling/low
+            WRITE_REGISTER_ULONG(&Pl061Registers->GPIODIR, 0); // All inputs
 
             PinValue = READ_REGISTER_ULONG(&Pl061Registers->GPIODATA);
-            PinValue &= ((1u << SIM_GPIO_PINS_PER_BANK) - 1u);
+            PinValue &= ((1u << PL061_GPIO_PINS_PER_BANK) - 1u);
             WRITE_REGISTER_ULONG(&Pl061Registers->GPIODATA, PinValue);
         }
-
-    } else {
+    }
+    else
+    {
 
         //
         // Restoring the controller state involves restoring the state of
         // each PL061 bank.
         //
 
-        for (BankId = 0; BankId < SIM_GPIO_TOTAL_BANKS; BankId += 1) {
+        for (BankId = 0; BankId < PL061_GPIO_TOTAL_BANKS; BankId += 1)
+        {
             RestoreParameters.BankId = BankId;
             RestoreParameters.State = PreviousPowerState;
             Pl061RestoreBankHardwareContext(Context, &RestoreParameters);
@@ -1202,12 +1207,11 @@ Return Value:
 }
 
 _IRQL_requires_(PASSIVE_LEVEL)
-NTSTATUS
-Pl061StopController (
-    _In_ PVOID Context,
-    _In_ BOOLEAN SaveContext,
-    _In_ WDF_POWER_DEVICE_STATE TargetState
-    )
+    NTSTATUS
+    Pl061StopController(
+        _In_ PVOID Context,
+        _In_ BOOLEAN SaveContext,
+        _In_ WDF_POWER_DEVICE_STATE TargetState)
 
 /*++
 
@@ -1238,9 +1242,8 @@ Return Value:
 
 {
 
-
     BANK_ID BankId;
-    PSIM_GPIO_CONTEXT GpioContext;
+    PPL061_GPIO_CONTEXT GpioContext;
     GPIO_SAVE_RESTORE_BANK_HARDWARE_CONTEXT_PARAMETERS SaveParameters;
 
     UNREFERENCED_PARAMETER(TargetState);
@@ -1258,13 +1261,15 @@ Return Value:
     // restored when the device is brought back to D0 (i.e. ON) power state.
     //
 
-    GpioContext = (PSIM_GPIO_CONTEXT)Context;
-    if (SaveContext == TRUE) {
+    GpioContext = (PPL061_GPIO_CONTEXT)Context;
+    if (SaveContext == TRUE)
+    {
         TraceEvents(TRACE_LEVEL_INFORMATION,
                     TRACE_FLAG_GPIO,
                     "%s: saving controller context for low-power transition",
                     __FUNCTION__);
-        for (BankId = 0; BankId < SIM_GPIO_TOTAL_BANKS; BankId += 1) {
+        for (BankId = 0; BankId < PL061_GPIO_TOTAL_BANKS; BankId += 1)
+        {
             SaveParameters.BankId = BankId;
             SaveParameters.State = TargetState;
             Pl061SaveBankHardwareContext(Context, &SaveParameters);
@@ -1281,10 +1286,9 @@ Return Value:
 _Must_inspect_result_
 _IRQL_requires_(PASSIVE_LEVEL)
 NTSTATUS
-Pl061EnableInterrupt (
+Pl061EnableInterrupt(
     _In_ PVOID Context,
-    _In_ PGPIO_ENABLE_INTERRUPT_PARAMETERS EnableParameters
-    )
+    _In_ PGPIO_ENABLE_INTERRUPT_PARAMETERS EnableParameters)
 
 /*++
 
@@ -1350,16 +1354,17 @@ Environment:
 {
 
     BANK_ID BankId;
-    PSIM_GPIO_BANK GpioBank;
-    PSIM_GPIO_CONTEXT GpioContext;
+    PPL061_GPIO_BANK GpioBank;
+    PPL061_GPIO_CONTEXT GpioContext;
     PIN_NUMBER PinNumber;
     ULONG PinValue;
-    PSIM_GPIO_REGISTERS Pl061Registers;
+    PPL061_GPIO_REGISTERS Pl061Registers;
     NTSTATUS Status;
 
     if ((EnableParameters->Polarity != InterruptActiveHigh) &&
         (EnableParameters->Polarity != InterruptActiveLow) &&
-        (EnableParameters->Polarity != InterruptActiveBoth)) {
+        (EnableParameters->Polarity != InterruptActiveBoth))
+    {
 
         Status = STATUS_NOT_SUPPORTED;
         TraceEvents(TRACE_LEVEL_ERROR,
@@ -1372,12 +1377,13 @@ Environment:
 
     BankId = EnableParameters->BankId;
     PinNumber = EnableParameters->PinNumber;
-    GpioContext = (PSIM_GPIO_CONTEXT)Context;
+    GpioContext = (PPL061_GPIO_CONTEXT)Context;
     GpioBank = &GpioContext->Banks[BankId];
     Pl061Registers = GpioBank->Registers;
     Status = STATUS_SUCCESS;
 
-    if (PinNumber >= SIM_GPIO_PINS_PER_BANK) {
+    if (PinNumber >= PL061_GPIO_PINS_PER_BANK)
+    {
         Status = STATUS_INVALID_PARAMETER;
         TraceEvents(TRACE_LEVEL_ERROR,
                     TRACE_FLAG_INTERRUPT,
@@ -1397,9 +1403,12 @@ Environment:
 
     // GPIOIS: 1 = level, 0 = edge.
     PinValue = READ_REGISTER_ULONG(&Pl061Registers->GPIOIS);
-    if (EnableParameters->InterruptMode == LevelSensitive) {
+    if (EnableParameters->InterruptMode == LevelSensitive)
+    {
         PinValue |= (1 << PinNumber);
-    } else {
+    }
+    else
+    {
         PinValue &= ~(1 << PinNumber);
     }
 
@@ -1408,16 +1417,20 @@ Environment:
     // GPIOIBE: both-edge enable for edge-triggered lines.
     PinValue = READ_REGISTER_ULONG(&Pl061Registers->GPIOIBE);
     if ((EnableParameters->InterruptMode == Latched) &&
-        (EnableParameters->Polarity == InterruptActiveBoth)) {
+        (EnableParameters->Polarity == InterruptActiveBoth))
+    {
         PinValue |= (1 << PinNumber);
-    } else {
+    }
+    else
+    {
         PinValue &= ~(1 << PinNumber);
     }
     WRITE_REGISTER_ULONG(&Pl061Registers->GPIOIBE, PinValue);
 
     // GPIOIEV: 1 = rising/high, 0 = falling/low.
     PinValue = READ_REGISTER_ULONG(&Pl061Registers->GPIOIEV);
-    switch (EnableParameters->Polarity) {
+    switch (EnableParameters->Polarity)
+    {
 
     case InterruptActiveHigh:
         PinValue |= (1 << PinNumber);
@@ -1464,7 +1477,8 @@ Environment:
     Status = STATUS_SUCCESS;
 
 EnableInterruptEnd:
-    if (NT_SUCCESS(Status)) {
+    if (NT_SUCCESS(Status))
+    {
         TraceEvents(TRACE_LEVEL_VERBOSE,
                     TRACE_FLAG_INTERRUPT,
                     "%s: enabled interrupt bank=%u pin=%u mode=%u polarity=%u",
@@ -1481,10 +1495,9 @@ EnableInterruptEnd:
 _Must_inspect_result_
 _IRQL_requires_(PASSIVE_LEVEL)
 NTSTATUS
-Pl061DisableInterrupt (
+Pl061DisableInterrupt(
     _In_ PVOID Context,
-    _In_ PGPIO_DISABLE_INTERRUPT_PARAMETERS DisableParameters
-    )
+    _In_ PGPIO_DISABLE_INTERRUPT_PARAMETERS DisableParameters)
 
 /*++
 
@@ -1531,13 +1544,13 @@ Environment:
 {
 
     BANK_ID BankId;
-    PSIM_GPIO_BANK GpioBank;
-    PSIM_GPIO_CONTEXT GpioContext;
+    PPL061_GPIO_BANK GpioBank;
+    PPL061_GPIO_CONTEXT GpioContext;
     ULONG PinValue;
-    PSIM_GPIO_REGISTERS Pl061Registers;
+    PPL061_GPIO_REGISTERS Pl061Registers;
 
     BankId = DisableParameters->BankId;
-    GpioContext = (PSIM_GPIO_CONTEXT)Context;
+    GpioContext = (PPL061_GPIO_CONTEXT)Context;
     GpioBank = &GpioContext->Banks[BankId];
     Pl061Registers = GpioBank->Registers;
 
@@ -1564,12 +1577,11 @@ Environment:
 }
 
 _Must_inspect_result_
-_IRQL_requires_same_
-NTSTATUS
-Pl061MaskInterrupts (
-    _In_ PVOID Context,
-    _In_ PGPIO_MASK_INTERRUPT_PARAMETERS MaskParameters
-    )
+    _IRQL_requires_same_
+        NTSTATUS
+        Pl061MaskInterrupts(
+            _In_ PVOID Context,
+            _In_ PGPIO_MASK_INTERRUPT_PARAMETERS MaskParameters)
 
 /*++
 
@@ -1624,12 +1636,12 @@ Environment:
 
 {
 
-    PSIM_GPIO_BANK GpioBank;
-    PSIM_GPIO_CONTEXT GpioContext;
+    PPL061_GPIO_BANK GpioBank;
+    PPL061_GPIO_CONTEXT GpioContext;
     ULONG PinValue;
-    PSIM_GPIO_REGISTERS Pl061Registers;
+    PPL061_GPIO_REGISTERS Pl061Registers;
 
-    GpioContext = (PSIM_GPIO_CONTEXT)Context;
+    GpioContext = (PPL061_GPIO_CONTEXT)Context;
     GpioBank = &GpioContext->Banks[MaskParameters->BankId];
     Pl061Registers = GpioBank->Registers;
 
@@ -1654,10 +1666,9 @@ Environment:
 }
 
 NTSTATUS
-Pl061UnmaskInterrupt (
+Pl061UnmaskInterrupt(
     _In_ PVOID Context,
-    _In_ PGPIO_ENABLE_INTERRUPT_PARAMETERS UnmaskParameters
-    )
+    _In_ PGPIO_ENABLE_INTERRUPT_PARAMETERS UnmaskParameters)
 
 /*++
 
@@ -1726,12 +1737,12 @@ Environment:
 
 {
 
-    PSIM_GPIO_BANK GpioBank;
-    PSIM_GPIO_CONTEXT GpioContext;
+    PPL061_GPIO_BANK GpioBank;
+    PPL061_GPIO_CONTEXT GpioContext;
     ULONG PinValue;
-    PSIM_GPIO_REGISTERS Pl061Registers;
+    PPL061_GPIO_REGISTERS Pl061Registers;
 
-    GpioContext = (PSIM_GPIO_CONTEXT)Context;
+    GpioContext = (PPL061_GPIO_CONTEXT)Context;
     GpioBank = &GpioContext->Banks[UnmaskParameters->BankId];
     Pl061Registers = GpioBank->Registers;
 
@@ -1749,12 +1760,11 @@ Environment:
 }
 
 _Must_inspect_result_
-_IRQL_requires_same_
-NTSTATUS
-Pl061QueryActiveInterrupts (
-    _In_ PVOID Context,
-    _In_ PGPIO_QUERY_ACTIVE_INTERRUPTS_PARAMETERS QueryActiveParameters
-    )
+    _IRQL_requires_same_
+        NTSTATUS
+        Pl061QueryActiveInterrupts(
+            _In_ PVOID Context,
+            _In_ PGPIO_QUERY_ACTIVE_INTERRUPTS_PARAMETERS QueryActiveParameters)
 
 /*++
 
@@ -1806,12 +1816,12 @@ Environment:
 
 {
 
-    PSIM_GPIO_BANK GpioBank;
-    PSIM_GPIO_CONTEXT GpioContext;
+    PPL061_GPIO_BANK GpioBank;
+    PPL061_GPIO_CONTEXT GpioContext;
     ULONG PinValue;
-    PSIM_GPIO_REGISTERS Pl061Registers;
+    PPL061_GPIO_REGISTERS Pl061Registers;
 
-    GpioContext = (PSIM_GPIO_CONTEXT)Context;
+    GpioContext = (PPL061_GPIO_CONTEXT)Context;
     GpioBank = &GpioContext->Banks[QueryActiveParameters->BankId];
     Pl061Registers = GpioBank->Registers;
 
@@ -1822,12 +1832,11 @@ Environment:
 }
 
 _Must_inspect_result_
-_IRQL_requires_same_
-NTSTATUS
-Pl061QueryEnabledInterrupts (
-    _In_ PVOID Context,
-    _In_ PGPIO_QUERY_ENABLED_INTERRUPTS_PARAMETERS QueryEnabledParameters
-    )
+    _IRQL_requires_same_
+        NTSTATUS
+        Pl061QueryEnabledInterrupts(
+            _In_ PVOID Context,
+            _In_ PGPIO_QUERY_ENABLED_INTERRUPTS_PARAMETERS QueryEnabledParameters)
 
 /*++
 
@@ -1876,12 +1885,12 @@ Environment:
 
 {
 
-    PSIM_GPIO_BANK GpioBank;
-    PSIM_GPIO_CONTEXT GpioContext;
+    PPL061_GPIO_BANK GpioBank;
+    PPL061_GPIO_CONTEXT GpioContext;
     ULONG PinValue;
-    PSIM_GPIO_REGISTERS Pl061Registers;
+    PPL061_GPIO_REGISTERS Pl061Registers;
 
-    GpioContext = (PSIM_GPIO_CONTEXT)Context;
+    GpioContext = (PPL061_GPIO_CONTEXT)Context;
     GpioBank = &GpioContext->Banks[QueryEnabledParameters->BankId];
     Pl061Registers = GpioBank->Registers;
 
@@ -1899,12 +1908,11 @@ Environment:
 }
 
 _Must_inspect_result_
-_IRQL_requires_same_
-NTSTATUS
-Pl061ClearActiveInterrupts (
-    _In_ PVOID Context,
-    _In_ PGPIO_CLEAR_ACTIVE_INTERRUPTS_PARAMETERS ClearParameters
-    )
+    _IRQL_requires_same_
+        NTSTATUS
+        Pl061ClearActiveInterrupts(
+            _In_ PVOID Context,
+            _In_ PGPIO_CLEAR_ACTIVE_INTERRUPTS_PARAMETERS ClearParameters)
 
 /*++
 
@@ -1960,12 +1968,12 @@ Environment:
 
 {
 
-    PSIM_GPIO_BANK GpioBank;
-    PSIM_GPIO_CONTEXT GpioContext;
+    PPL061_GPIO_BANK GpioBank;
+    PPL061_GPIO_CONTEXT GpioContext;
     ULONG PinValue;
-    PSIM_GPIO_REGISTERS Pl061Registers;
+    PPL061_GPIO_REGISTERS Pl061Registers;
 
-    GpioContext = (PSIM_GPIO_CONTEXT)Context;
+    GpioContext = (PPL061_GPIO_CONTEXT)Context;
     GpioBank = &GpioContext->Banks[ClearParameters->BankId];
     Pl061Registers = GpioBank->Registers;
 
@@ -1988,10 +1996,9 @@ Environment:
 }
 
 NTSTATUS
-Pl061ReconfigureInterrupt (
+Pl061ReconfigureInterrupt(
     _In_ PVOID Context,
-    _In_ PGPIO_RECONFIGURE_INTERRUPTS_PARAMETERS ReconfigureParameters
-    )
+    _In_ PGPIO_RECONFIGURE_INTERRUPTS_PARAMETERS ReconfigureParameters)
 
 /*++
 
@@ -2051,19 +2058,20 @@ Environment:
 {
 
     BANK_ID BankId;
-    PSIM_GPIO_BANK GpioBank;
-    PSIM_GPIO_CONTEXT GpioContext;
+    PPL061_GPIO_BANK GpioBank;
+    PPL061_GPIO_CONTEXT GpioContext;
     PIN_NUMBER PinNumber;
     ULONG PinValue;
-    PSIM_GPIO_REGISTERS Pl061Registers;
+    PPL061_GPIO_REGISTERS Pl061Registers;
 
     BankId = ReconfigureParameters->BankId;
     PinNumber = ReconfigureParameters->PinNumber;
-    GpioContext = (PSIM_GPIO_CONTEXT)Context;
+    GpioContext = (PPL061_GPIO_CONTEXT)Context;
     GpioBank = &GpioContext->Banks[BankId];
     Pl061Registers = GpioBank->Registers;
 
-    if (PinNumber >= SIM_GPIO_PINS_PER_BANK) {
+    if (PinNumber >= PL061_GPIO_PINS_PER_BANK)
+    {
         return STATUS_INVALID_PARAMETER;
     }
 
@@ -2076,9 +2084,12 @@ Environment:
 
     // GPIOIS: 1 = level, 0 = edge.
     PinValue = READ_REGISTER_ULONG(&Pl061Registers->GPIOIS);
-    if (ReconfigureParameters->InterruptMode == LevelSensitive) {
+    if (ReconfigureParameters->InterruptMode == LevelSensitive)
+    {
         PinValue |= (1 << PinNumber);
-    } else {
+    }
+    else
+    {
         PinValue &= ~(1 << PinNumber);
     }
 
@@ -2087,16 +2098,20 @@ Environment:
     // GPIOIBE: both-edge enable for edge-triggered lines.
     PinValue = READ_REGISTER_ULONG(&Pl061Registers->GPIOIBE);
     if ((ReconfigureParameters->InterruptMode == Latched) &&
-        (ReconfigureParameters->Polarity == InterruptActiveBoth)) {
+        (ReconfigureParameters->Polarity == InterruptActiveBoth))
+    {
         PinValue |= (1 << PinNumber);
-    } else {
+    }
+    else
+    {
         PinValue &= ~(1 << PinNumber);
     }
     WRITE_REGISTER_ULONG(&Pl061Registers->GPIOIBE, PinValue);
 
     // GPIOIEV: 1 = rising/high, 0 = falling/low.
     PinValue = READ_REGISTER_ULONG(&Pl061Registers->GPIOIEV);
-    switch (ReconfigureParameters->Polarity) {
+    switch (ReconfigureParameters->Polarity)
+    {
 
     case InterruptActiveHigh:
         PinValue |= (1 << PinNumber);
@@ -2125,10 +2140,9 @@ Environment:
 _Must_inspect_result_
 _IRQL_requires_(PASSIVE_LEVEL)
 NTSTATUS
-Pl061ConnectIoPins (
+Pl061ConnectIoPins(
     _In_ PVOID Context,
-    _In_ PGPIO_CONNECT_IO_PINS_PARAMETERS ConnectParameters
-    )
+    _In_ PGPIO_CONNECT_IO_PINS_PARAMETERS ConnectParameters)
 
 /*++
 
@@ -2196,16 +2210,16 @@ Environment:
 
 {
 
-    PSIM_GPIO_BANK GpioBank;
-    PSIM_GPIO_CONTEXT GpioContext;
+    PPL061_GPIO_BANK GpioBank;
+    PPL061_GPIO_CONTEXT GpioContext;
     ULONG Index;
     PIN_NUMBER PinNumber;
     PPIN_NUMBER PinNumberTable;
     ULONG PinValue;
-    PSIM_GPIO_REGISTERS Pl061Registers;
+    PPL061_GPIO_REGISTERS Pl061Registers;
     NTSTATUS Status;
 
-    GpioContext = (PSIM_GPIO_CONTEXT)Context;
+    GpioContext = (PPL061_GPIO_CONTEXT)Context;
     GpioBank = &GpioContext->Banks[ConnectParameters->BankId];
     Pl061Registers = GpioBank->Registers;
     Status = STATUS_SUCCESS;
@@ -2222,17 +2236,20 @@ Environment:
     //
 
     PinNumberTable = ConnectParameters->PinNumberTable;
-    for (Index = 0; Index < ConnectParameters->PinCount; Index += 1) {
+    for (Index = 0; Index < ConnectParameters->PinCount; Index += 1)
+    {
         PinNumber = PinNumberTable[Index];
 
         //
         // PL061 direction convention: 1 = output, 0 = input.
         //
 
-        if (ConnectParameters->ConnectMode == ConnectModeInput) {
+        if (ConnectParameters->ConnectMode == ConnectModeInput)
+        {
             PinValue &= ~(1 << PinNumber);
-
-        } else if (ConnectParameters->ConnectMode == ConnectModeOutput) {
+        }
+        else if (ConnectParameters->ConnectMode == ConnectModeOutput)
+        {
             PinValue |= (1 << PinNumber);
         }
     }
@@ -2244,10 +2261,9 @@ Environment:
 _Must_inspect_result_
 _IRQL_requires_(PASSIVE_LEVEL)
 NTSTATUS
-Pl061DisconnectIoPins (
+Pl061DisconnectIoPins(
     _In_ PVOID Context,
-    _In_ PGPIO_DISCONNECT_IO_PINS_PARAMETERS DisconnectParameters
-    )
+    _In_ PGPIO_DISCONNECT_IO_PINS_PARAMETERS DisconnectParameters)
 
 /*++
 
@@ -2296,24 +2312,25 @@ Environment:
 
 {
 
-    PSIM_GPIO_BANK GpioBank;
-    PSIM_GPIO_CONTEXT GpioContext;
+    PPL061_GPIO_BANK GpioBank;
+    PPL061_GPIO_CONTEXT GpioContext;
     ULONG Index;
     PIN_NUMBER PinNumber;
     PPIN_NUMBER PinNumberTable;
     ULONG PinValue;
-    PSIM_GPIO_REGISTERS Pl061Registers;
+    PPL061_GPIO_REGISTERS Pl061Registers;
 
     //
     // If the pin configuration should be preserved post disconnect, then
     // there is nothing left to do.
     //
 
-    if (DisconnectParameters->DisconnectFlags.PreserveConfiguration == 1) {
+    if (DisconnectParameters->DisconnectFlags.PreserveConfiguration == 1)
+    {
         return STATUS_SUCCESS;
     }
 
-    GpioContext = (PSIM_GPIO_CONTEXT)Context;
+    GpioContext = (PPL061_GPIO_CONTEXT)Context;
     GpioBank = &GpioContext->Banks[DisconnectParameters->BankId];
     Pl061Registers = GpioBank->Registers;
 
@@ -2329,7 +2346,8 @@ Environment:
     //
 
     PinNumberTable = DisconnectParameters->PinNumberTable;
-    for (Index = 0; Index < DisconnectParameters->PinCount; Index += 1) {
+    for (Index = 0; Index < DisconnectParameters->PinCount; Index += 1)
+    {
         PinNumber = PinNumberTable[Index];
         PinValue &= ~(1 << PinNumber);
     }
@@ -2340,11 +2358,10 @@ Environment:
 }
 
 _Must_inspect_result_
-NTSTATUS
-Pl061ReadGpioPins (
-    _In_ PVOID Context,
-    _In_ PGPIO_READ_PINS_MASK_PARAMETERS ReadParameters
-    )
+    NTSTATUS
+    Pl061ReadGpioPins(
+        _In_ PVOID Context,
+        _In_ PGPIO_READ_PINS_MASK_PARAMETERS ReadParameters)
 
 /*++
 
@@ -2397,12 +2414,12 @@ Environment:
 
 {
 
-    PSIM_GPIO_BANK GpioBank;
-    PSIM_GPIO_CONTEXT GpioContext;
+    PPL061_GPIO_BANK GpioBank;
+    PPL061_GPIO_CONTEXT GpioContext;
     ULONG PinValue;
-    PSIM_GPIO_REGISTERS Pl061Registers;
+    PPL061_GPIO_REGISTERS Pl061Registers;
 
-    GpioContext = (PSIM_GPIO_CONTEXT)Context;
+    GpioContext = (PPL061_GPIO_CONTEXT)Context;
     GpioBank = &GpioContext->Banks[ReadParameters->BankId];
     Pl061Registers = GpioBank->Registers;
 
@@ -2418,11 +2435,10 @@ Environment:
 }
 
 _Must_inspect_result_
-NTSTATUS
-Pl061WriteGpioPins (
-    _In_ PVOID Context,
-    _In_ PGPIO_WRITE_PINS_MASK_PARAMETERS WriteParameters
-    )
+    NTSTATUS
+    Pl061WriteGpioPins(
+        _In_ PVOID Context,
+        _In_ PGPIO_WRITE_PINS_MASK_PARAMETERS WriteParameters)
 
 /*++
 
@@ -2471,12 +2487,12 @@ Environment:
 
 {
 
-    PSIM_GPIO_BANK GpioBank;
-    PSIM_GPIO_CONTEXT GpioContext;
+    PPL061_GPIO_BANK GpioBank;
+    PPL061_GPIO_CONTEXT GpioContext;
     ULONG PinValue;
-    PSIM_GPIO_REGISTERS Pl061Registers;
+    PPL061_GPIO_REGISTERS Pl061Registers;
 
-    GpioContext = (PSIM_GPIO_CONTEXT)Context;
+    GpioContext = (PPL061_GPIO_CONTEXT)Context;
     GpioBank = &GpioContext->Banks[WriteParameters->BankId];
     Pl061Registers = GpioBank->Registers;
 
@@ -2490,7 +2506,7 @@ Environment:
     // Set or clear only output-configured pins (GPIODIR bit = 1).
     {
         ULONG outputMask = READ_REGISTER_ULONG(&Pl061Registers->GPIODIR);
-        outputMask &= ((1u << SIM_GPIO_PINS_PER_BANK) - 1u);
+        outputMask &= ((1u << PL061_GPIO_PINS_PER_BANK) - 1u);
 
         PinValue |= (WriteParameters->SetMask & outputMask);
         PinValue &= ~(WriteParameters->ClearMask & outputMask);
@@ -2509,11 +2525,9 @@ Environment:
 // ------------------------------------------------------- Power mgmt handlers
 //
 
-VOID
-Pl061SaveBankHardwareContext (
+VOID Pl061SaveBankHardwareContext(
     _In_ PVOID Context,
-    _In_ PGPIO_SAVE_RESTORE_BANK_HARDWARE_CONTEXT_PARAMETERS SaveParameters
-    )
+    _In_ PGPIO_SAVE_RESTORE_BANK_HARDWARE_CONTEXT_PARAMETERS SaveParameters)
 
 /*++
 
@@ -2543,11 +2557,11 @@ Return Value:
 
 {
 
-    PSIM_GPIO_BANK GpioBank;
-    PSIM_GPIO_CONTEXT GpioContext;
-    PSIM_GPIO_REGISTERS Pl061Registers;
+    PPL061_GPIO_BANK GpioBank;
+    PPL061_GPIO_CONTEXT GpioContext;
+    PPL061_GPIO_REGISTERS Pl061Registers;
 
-    GpioContext = (PSIM_GPIO_CONTEXT)Context;
+    GpioContext = (PPL061_GPIO_CONTEXT)Context;
     GpioBank = &GpioContext->Banks[SaveParameters->BankId];
     Pl061Registers = GpioBank->Registers;
 
@@ -2563,15 +2577,13 @@ Return Value:
     GpioBank->SavedContext.GPIOIBE = READ_REGISTER_ULONG(&Pl061Registers->GPIOIBE);
     GpioBank->SavedContext.GPIOIEV = READ_REGISTER_ULONG(&Pl061Registers->GPIOIEV);
     GpioBank->SavedContext.GPIOIE = READ_REGISTER_ULONG(&Pl061Registers->GPIOIE);
-    
+
     return;
 }
 
-VOID
-Pl061RestoreBankHardwareContext (
+VOID Pl061RestoreBankHardwareContext(
     _In_ PVOID Context,
-    _In_ PGPIO_SAVE_RESTORE_BANK_HARDWARE_CONTEXT_PARAMETERS RestoreParameters
-    )
+    _In_ PGPIO_SAVE_RESTORE_BANK_HARDWARE_CONTEXT_PARAMETERS RestoreParameters)
 
 /*++
 
@@ -2601,11 +2613,11 @@ Return Value:
 
 {
 
-    PSIM_GPIO_BANK GpioBank;
-    PSIM_GPIO_CONTEXT GpioContext;
-    PSIM_GPIO_REGISTERS Pl061Registers;
+    PPL061_GPIO_BANK GpioBank;
+    PPL061_GPIO_CONTEXT GpioContext;
+    PPL061_GPIO_REGISTERS Pl061Registers;
 
-    GpioContext = (PSIM_GPIO_CONTEXT)Context;
+    GpioContext = (PPL061_GPIO_CONTEXT)Context;
     GpioBank = &GpioContext->Banks[RestoreParameters->BankId];
     Pl061Registers = GpioBank->Registers;
 
@@ -2623,7 +2635,4 @@ Return Value:
     return;
 }
 
-__pragma(warning(default: 4127))        // conditional expression is a constant
-
-
-
+__pragma(warning(default : 4127)) // conditional expression is a constant

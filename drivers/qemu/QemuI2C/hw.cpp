@@ -2,7 +2,7 @@
 
 Copyright (c) Microsoft Corporation.  All rights reserved.
 
-Module Name: 
+Module Name:
 
     hw.cpp
 
@@ -24,60 +24,54 @@ Revision History:
 
 ULONG
 HWREG<ULONG>::Read(
-    VOID
-    )
+    VOID)
 {
     volatile ULONG *addr = &m_Value;
-    ULONG v = READ_REGISTER_ULONG((PULONG)addr);
+    ULONG v = READ_REGISTER_ULONG(addr);
     return v;
 }
 
 ULONG
 HWREG<ULONG>::Write(
-    _In_ ULONG Value
-    )
+    _In_ ULONG Value)
 {
     volatile ULONG *addr = &m_Value;
-    WRITE_REGISTER_ULONG((PULONG)addr, Value);
+    WRITE_REGISTER_ULONG(addr, Value);
     return Value;
 }
 
 USHORT
 HWREG<USHORT>::Read(
-    VOID
-    )
+    VOID)
 {
     volatile USHORT *addr = &m_Value;
-    USHORT v = READ_REGISTER_USHORT((PUSHORT)addr);
+    USHORT v = READ_REGISTER_USHORT(addr);
     return v;
 }
 
 USHORT
 HWREG<USHORT>::Write(
-    _In_ USHORT Value
-    )
+    _In_ USHORT Value)
 {
     volatile USHORT *addr = &m_Value;
-    WRITE_REGISTER_USHORT((PUSHORT)addr, Value);
+    WRITE_REGISTER_USHORT(addr, Value);
     return Value;
 }
 
 UCHAR
 HWREG<UCHAR>::Read(
-    VOID
-    )
+    VOID)
 {
     volatile UCHAR *addr = &m_Value;
-    UCHAR v = READ_REGISTER_UCHAR((PUCHAR)addr);
+    UCHAR v = READ_REGISTER_UCHAR(addr);
     return v;
 }
 
 UCHAR
 HWREG<UCHAR>::Write(
-    _In_ UCHAR Value
-    )
+    _In_ UCHAR Value)
 {
     volatile UCHAR *addr = &m_Value;
-    WRITE_REGISTER_UCHAR((PUCHAR)addr, Value);
+    WRITE_REGISTER_UCHAR(addr, Value);
     return Value;
 }

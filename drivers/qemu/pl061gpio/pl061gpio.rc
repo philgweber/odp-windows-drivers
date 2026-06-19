@@ -2,11 +2,10 @@
 
 #include <ntverp.h>
 
-#define	VER_FILETYPE	VFT_DLL
-#define	VER_FILESUBTYPE	VFT2_UNKNOWN
-#define VER_FILEDESCRIPTION_STR     "PL061 GPIO Client"
-#define VER_INTERNALNAME_STR        "pl061gpio.sys"
-#define VER_ORIGINALFILENAME_STR    "pl061gpio.sys"
+#define VER_FILETYPE VFT_DRV
+#define VER_FILESUBTYPE VFT2_DRV_SYSTEM
+#define VER_FILEDESCRIPTION_STR "PL061 GPIO Client"
+#define VER_INTERNALNAME_STR "pl061gpio.sys"
+#define VER_ORIGINALFILENAME_STR "pl061gpio.sys"
 
 #include "common.ver"
-

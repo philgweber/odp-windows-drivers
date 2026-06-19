@@ -2,7 +2,7 @@
 
 Copyright (c) Microsoft Corporation.  All rights reserved.
 
-Module Name: 
+Module Name:
 
     internal.h
 
@@ -23,10 +23,10 @@ Revision History:
 #define _INTERNAL_H_
 
 #pragma warning(push)
-#pragma warning(disable:4512)
-#pragma warning(disable:4480)
+#pragma warning(disable : 4512)
+#pragma warning(disable : 4480)
 
-#define SI2C_POOL_TAG ((ULONG) 'C2IS')
+#define SI2C_POOL_TAG ((ULONG)'C2IS')
 
 /////////////////////////////////////////////////
 //
@@ -42,7 +42,6 @@ Revision History:
 
 #include "SPBCx.h"
 #include "i2ctrace.h"
-
 
 /////////////////////////////////////////////////
 //
@@ -66,7 +65,8 @@ Revision History:
 
 #include "pshpack1.h"
 
-typedef struct _PNP_I2C_SERIAL_BUS_DESCRIPTOR {
+typedef struct _PNP_I2C_SERIAL_BUS_DESCRIPTOR
+{
     PNP_SERIAL_BUS_DESCRIPTOR SerialBusDescriptor;
     ULONG ConnectionSpeed;
     USHORT SlaveAddress;
@@ -89,10 +89,10 @@ typedef struct _PNP_I2C_SERIAL_BUS_DESCRIPTOR {
 // Power settings.
 //
 
-#define MONITOR_POWER_ON         1
-#define MONITOR_POWER_OFF        0
+#define MONITOR_POWER_ON 1
+#define MONITOR_POWER_OFF 0
 
-#define IDLE_TIMEOUT_MONITOR_ON  1000
+#define IDLE_TIMEOUT_MONITOR_ON 1000
 #define IDLE_TIMEOUT_MONITOR_OFF 100
 
 //
@@ -103,25 +103,18 @@ typedef enum ADDRESS_MODE
 {
     AddressMode7Bit,
     AddressMode10Bit
-}
-ADDRESS_MODE, *PADDRESS_MODE;
+} ADDRESS_MODE,
+    *PADDRESS_MODE;
 
 typedef struct PBC_TARGET_SETTINGS
 {
-    // TODO: Update this structure to include other
-    //       target settings needed to configure the
-    //       controller (i.e. connection speed, phase/
-    //       polarity for SPI).
-
-    ADDRESS_MODE                  AddressMode;
-    USHORT                        Address;
-    ULONG                         ConnectionSpeed;
-}
-PBC_TARGET_SETTINGS, *PPBC_TARGET_SETTINGS;
-
+    ADDRESS_MODE AddressMode;
+    USHORT Address;
+    ULONG ConnectionSpeed;
+} PBC_TARGET_SETTINGS, *PPBC_TARGET_SETTINGS;
 
 //
-// Transfer settings. 
+// Transfer settings.
 //
 
 typedef enum BUS_CONDITION
@@ -129,20 +122,15 @@ typedef enum BUS_CONDITION
     BusConditionFree,
     BusConditionBusy,
     BusConditionDontCare
-}
-BUS_CONDITION, *PBUS_CONDITION;
+} BUS_CONDITION,
+    *PBUS_CONDITION;
 
 typedef struct PBC_TRANSFER_SETTINGS
 {
-    // TODO: Update this structure to include other
-    //       settings needed to configure the controller 
-    //       for a specific transfer.
-
-    BUS_CONDITION                  BusCondition;
-    BOOLEAN                        IsStart;
-    BOOLEAN                        IsEnd;
-}
-PBC_TRANSFER_SETTINGS, *PPBC_TRANSFER_SETTINGS;
+    BUS_CONDITION BusCondition;
+    BOOLEAN IsStart;
+    BOOLEAN IsEnd;
+} PBC_TRANSFER_SETTINGS, *PPBC_TRANSFER_SETTINGS;
 
 /////////////////////////////////////////////////
 //
@@ -150,83 +138,74 @@ PBC_TRANSFER_SETTINGS, *PPBC_TRANSFER_SETTINGS;
 //
 /////////////////////////////////////////////////
 
-typedef struct PBC_DEVICE   PBC_DEVICE,   *PPBC_DEVICE;
-typedef struct PBC_TARGET   PBC_TARGET,   *PPBC_TARGET;
-typedef struct PBC_REQUEST  PBC_REQUEST,  *PPBC_REQUEST;
+typedef struct PBC_DEVICE PBC_DEVICE, *PPBC_DEVICE;
+typedef struct PBC_TARGET PBC_TARGET, *PPBC_TARGET;
+typedef struct PBC_REQUEST PBC_REQUEST, *PPBC_REQUEST;
 
 //
 // Device context.
 //
 
-struct PBC_DEVICE 
+struct PBC_DEVICE
 {
-    // TODO: Update this structure with variables that 
-    //       need to be stored in the device context.
-
     // Handle to the WDF device.
-    WDFDEVICE                      FxDevice;
+    WDFDEVICE FxDevice;
 
     // Structure mapped to the controller's
     // register interface.
-    PQEMUI2C_REGISTERS             pRegisters;
-    ULONG                          RegistersCb;
-    PHYSICAL_ADDRESS               pRegistersPhysicalAddress;
+    PQEMUI2C_REGISTERS pRegisters;
+    ULONG RegistersCb;
+    PHYSICAL_ADDRESS pRegistersPhysicalAddress;
 
     // Target that the controller is currently
     // configured for. In most cases this value is only
     // set when there is a request being handled, however,
     // it will persist between lock and unlock requests.
     // There cannot be more than one current target.
-    PPBC_TARGET                    pCurrentTarget;
-    
+    PPBC_TARGET pCurrentTarget;
+
     // Variables to track enabled interrupts
     // and status. The QEMU controller is polled (no interrupt
     // resource), so these are retained only for the unwired
     // ISR/DPC scaffolding.
-    WDFINTERRUPT                   InterruptObject;
-    ULONG                          InterruptMask;
-    ULONG                          InterruptStatus;
+    WDFINTERRUPT InterruptObject;
+    ULONG InterruptMask;
+    ULONG InterruptStatus;
 
     // Controller driver lock. A wait lock (PASSIVE_LEVEL) is used so
     // that transfers, which poll the controller, never spin at
     // DISPATCH_LEVEL.
-    WDFWAITLOCK                    Lock;
+    WDFWAITLOCK Lock;
 
     // The power setting callback handle
-    PVOID                          pMonitorPowerSettingHandle;
+    PVOID pMonitorPowerSettingHandle;
 };
 
 //
 // Target context.
 //
 
-struct PBC_TARGET 
+struct PBC_TARGET
 {
-    // TODO: Update this structure with variables that 
-    //       need to be stored in the target context.
-
     // Handle to the SPB target.
-    SPBTARGET                      SpbTarget;
+    SPBTARGET SpbTarget;
 
     // Target specific settings.
-    PBC_TARGET_SETTINGS            Settings;
-    
-    // Current request associated with the 
+    PBC_TARGET_SETTINGS Settings;
+
+    // Current request associated with the
     // target. This value should only be non-null
     // when this target is the controller's current
     // target.
-    PPBC_REQUEST                   pCurrentRequest;
+    PPBC_REQUEST pCurrentRequest;
 };
 
 //
 // Request context.
 //
 
-struct PBC_REQUEST 
+struct PBC_REQUEST
 {
-    // TODO: Update this structure with variables that 
-    //       need to be stored in the request context.
-
     //
     // Variables that persist for the lifetime of
     // the request. Specifically these apply to an
@@ -234,23 +213,22 @@ struct PBC_REQUEST
     //
 
     // Handle to the SPB request.
-    SPBREQUEST                     SpbRequest;
+    SPBREQUEST SpbRequest;
 
     // SPB request type.
-    SPB_REQUEST_TYPE               Type;
+    SPB_REQUEST_TYPE Type;
 
-    // Number of transfers in sequence and 
+    // Number of transfers in sequence and
     // index of the current one.
-    ULONG                          TransferCount; 
-    ULONG                          TransferIndex;
+    ULONG TransferCount;
+    ULONG TransferIndex;
 
     // Total bytes transferred.
-    size_t                         TotalInformation;
+    size_t TotalInformation;
 
     // Current status of the request.
-    NTSTATUS                       Status;
-    BOOLEAN                        bIoComplete;
-
+    NTSTATUS Status;
+    BOOLEAN bIoComplete;
 
     //
     // Variables that are reused for each transfer within
@@ -258,35 +236,35 @@ struct PBC_REQUEST
     //
 
     // Pointer to the transfer buffer and length.
-    size_t                         Length;
-    PMDL                           pMdlChain;
+    size_t Length;
+    PMDL pMdlChain;
 
     // Position of the current transfer within
     // the sequence and its associated controller
     // settings.
-    SPB_REQUEST_SEQUENCE_POSITION  SequencePosition;
-    PBC_TRANSFER_SETTINGS          Settings;
+    SPB_REQUEST_SEQUENCE_POSITION SequencePosition;
+    PBC_TRANSFER_SETTINGS Settings;
 
     // Direction of the current transfer.
-    SPB_TRANSFER_DIRECTION         Direction;
+    SPB_TRANSFER_DIRECTION Direction;
 
     // Time to delay before starting transfer.
-    ULONG                          DelayInUs;
+    ULONG DelayInUs;
 
     // Interrupt flag indicating data is ready to
     // be transferred.
-    ULONG                          DataReadyFlag; 
+    ULONG DataReadyFlag;
 
     // Bytes read/written in the current transfer.
-    size_t                         Information;
+    size_t Information;
 };
 
 //
 // Declate contexts for device, target, and request.
 //
 
-WDF_DECLARE_CONTEXT_TYPE_WITH_NAME(PBC_DEVICE,  GetDeviceContext);
-WDF_DECLARE_CONTEXT_TYPE_WITH_NAME(PBC_TARGET,  GetTargetContext);
+WDF_DECLARE_CONTEXT_TYPE_WITH_NAME(PBC_DEVICE, GetDeviceContext);
+WDF_DECLARE_CONTEXT_TYPE_WITH_NAME(PBC_TARGET, GetTargetContext);
 WDF_DECLARE_CONTEXT_TYPE_WITH_NAME(PBC_REQUEST, GetRequestContext);
 
 #pragma warning(pop)
