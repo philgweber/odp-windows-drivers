@@ -579,7 +579,7 @@ VOID OnControllerLock(
     // Acquire the device lock.
     //
 
-    WdfWaitLockAcquire(pDevice->Lock, NULL);
+    WdfSpinLockAcquire(pDevice->Lock);
 
     //
     // Assign current target.
@@ -589,7 +589,7 @@ VOID OnControllerLock(
 
     pDevice->pCurrentTarget = pTarget;
 
-    WdfWaitLockRelease(pDevice->Lock);
+    WdfSpinLockRelease(pDevice->Lock);
 
     Trace(
         TRACE_LEVEL_INFORMATION,
@@ -645,9 +645,17 @@ VOID OnControllerUnlock(
     // Acquire the device lock.
     //
 
-    WdfWaitLockAcquire(pDevice->Lock, NULL);
+    WdfSpinLockAcquire(pDevice->Lock);
 
-    // Transfers are completed in QEMU device after they are started
+    //
+    // There is never a transfer in flight to abort here. SpbCx serializes
+    // requests to the controller, and a read/write's SPBREQUEST is not
+    // completed until its transfer finishes in the interrupt DPC. The unlock
+    // request is therefore not dispatched until the preceding transfer has
+    // already completed, so pCurrentRequest is NULL by the time we run.
+    //
+
+    NT_ASSERT(pTarget->pCurrentRequest == NULL);
 
     //
     // Remove current target.
@@ -657,7 +665,7 @@ VOID OnControllerUnlock(
 
     pDevice->pCurrentTarget = NULL;
 
-    WdfWaitLockRelease(pDevice->Lock);
+    WdfSpinLockRelease(pDevice->Lock);
 
     Trace(
         TRACE_LEVEL_INFORMATION,
@@ -879,7 +887,7 @@ VOID OnSequence(
     // Acquire the device lock.
     //
 
-    WdfWaitLockAcquire(pDevice->Lock, NULL);
+    WdfSpinLockAcquire(pDevice->Lock);
 
     //
     // Update device and target contexts.
@@ -892,22 +900,25 @@ VOID OnSequence(
     pTarget->pCurrentRequest = pRequest;
 
     //
-    // Configure controller and kick-off read.
-    // Request will be completed asynchronously.
+    // Configure controller and kick off the transfer. The request is
+    // normally completed asynchronously by the interrupt DPC; it only
+    // finishes here (bIoComplete) if it failed synchronously during
+    // configuration (e.g. an unsupported addressing mode).
     //
 
     PbcRequestDoTransfer(pDevice, pRequest);
 
-    // TODO: We should be able to remove this loop and let the request complete later
+    // Set if the transfer failed before an interrupt could be armed
+    // (e.g. 10-bit address rejected); no DPC will run to complete it.
     if (pRequest->bIoComplete)
     {
         completeRequest = TRUE;
     }
 
-    WdfWaitLockRelease(pDevice->Lock);
+    WdfSpinLockRelease(pDevice->Lock);
 
-    // The transfer was performed synchronously above. Complete the
-    // request outside of the locked code.
+    // Complete the request outside of the locked code if it finished
+    // synchronously above.
     if (completeRequest)
     {
         PbcRequestComplete(pRequest);
@@ -1037,11 +1048,6 @@ VOID OnOther(
 //
 // Interrupt handling functions.
 //
-// NOTE: The QEMU controller exposes no interrupt resource, so no
-// WDFINTERRUPT object is created and the ISR/DPC below are never
-// invoked. They are retained only as scaffolding for a future
-// interrupt-driven port of this driver.
-//
 /////////////////////////////////////////////////
 
 BOOLEAN
@@ -1156,8 +1162,6 @@ VOID OnInterruptDpc(
     BOOLEAN bInterruptsProcessed = FALSE;
     BOOLEAN completeRequest = FALSE;
 
-    UNREFERENCED_PARAMETER(Interrupt);
-
     pDevice = GetDeviceContext(WdfDevice);
     NT_ASSERT(pDevice != NULL);
 
@@ -1165,7 +1169,7 @@ VOID OnInterruptDpc(
     // Acquire the device lock.
     //
 
-    WdfWaitLockAcquire(pDevice->Lock, NULL);
+    WdfSpinLockAcquire(pDevice->Lock);
 
     //
     // Make sure the target and request are
@@ -1209,14 +1213,12 @@ VOID OnInterruptDpc(
     // a DPC should never occur with interrupt status 0.
     //
 
-    // TODO: Uncomment when using interrupts.
-    // WdfInterruptAcquireLock(Interrupt);
+    WdfInterruptAcquireLock(Interrupt);
 
     stat = pDevice->InterruptStatus;
     pDevice->InterruptStatus = 0;
 
-    // TODO: Uncomment when using interrupts.
-    // WdfInterruptReleaseLock(Interrupt);
+    WdfInterruptReleaseLock(Interrupt);
 
     if (stat == 0)
     {
@@ -1247,8 +1249,7 @@ VOID OnInterruptDpc(
     // Re-enable interrupts if necessary. Synchronize with ISR.
     //
 
-    // TODO: Uncomment when using interrupts.
-    // WdfInterruptAcquireLock(Interrupt);
+    WdfInterruptAcquireLock(Interrupt);
 
     ULONG mask = PbcDeviceGetInterruptMask(pDevice);
 
@@ -1264,8 +1265,7 @@ VOID OnInterruptDpc(
         ControllerEnableInterrupts(pDevice, mask);
     }
 
-    // TODO: Uncomment when using interrupts.
-    // WdfInterruptReleaseLock(Interrupt);
+    WdfInterruptReleaseLock(Interrupt);
 
 exit:
 
@@ -1273,7 +1273,7 @@ exit:
     // Release the device lock.
     //
 
-    WdfWaitLockRelease(pDevice->Lock);
+    WdfSpinLockRelease(pDevice->Lock);
 
     //
     // Complete the request if necessary.
@@ -1548,7 +1548,7 @@ VOID PbcRequestConfigureForNonSequence(
     // Acquire the device lock.
     //
 
-    WdfWaitLockAcquire(pDevice->Lock, NULL);
+    WdfSpinLockAcquire(pDevice->Lock);
 
     //
     // If sequence position is...
@@ -1584,20 +1584,24 @@ VOID PbcRequestConfigureForNonSequence(
     pTarget->pCurrentRequest = pRequest;
 
     //
-    // Configure controller and perform the transfer synchronously.
+    // Configure the controller and kick off the transfer. It then
+    // advances asynchronously via the interrupt DPC.
     //
 
     PbcRequestDoTransfer(pDevice, pRequest);
 
+    // Set if the transfer failed before an interrupt could be armed
+    // (e.g. 10-bit address rejected); no DPC will run to complete it.
     if (pRequest->bIoComplete)
     {
         completeRequest = TRUE;
     }
 
-    WdfWaitLockRelease(pDevice->Lock);
+    WdfSpinLockRelease(pDevice->Lock);
 
-    // The transfer was performed synchronously above. Complete the
-    // request outside of the locked code.
+    // Complete the request outside of the locked code if it finished
+    // synchronously above (e.g. a validation failure). Normal transfers
+    // complete asynchronously in the interrupt DPC.
     if (completeRequest)
     {
         PbcRequestComplete(pRequest);
@@ -1741,8 +1745,10 @@ VOID PbcRequestDoTransfer(
 
     //
     // Apply any inter-transfer delay requested by the peripheral, then
-    // perform the transfer. The controller is polled, so the transfer
-    // runs synchronously at PASSIVE_LEVEL and no timer is required.
+    // begin the transfer. PbcRequestDoTransfer can run at DISPATCH_LEVEL
+    // (from the interrupt DPC when chaining sequence transfers), so the
+    // delay is a busy-stall rather than a blocking wait. Peripheral
+    // delays are typically zero.
     //
 
     if (pRequest->DelayInUs > 0)
@@ -1754,21 +1760,7 @@ VOID PbcRequestDoTransfer(
             pRequest->DelayInUs,
             pDevice->FxDevice);
 
-        if (pRequest->DelayInUs < 100)
-        {
-            KeStallExecutionProcessor(pRequest->DelayInUs);
-        }
-        else
-        {
-            LARGE_INTEGER interval;
-
-            //
-            // Relative timeout in 100ns units (negative).
-            //
-
-            interval.QuadPart = -((LONGLONG)pRequest->DelayInUs * 10);
-            KeDelayExecutionThread(KernelMode, FALSE, &interval);
-        }
+        KeStallExecutionProcessor(pRequest->DelayInUs);
     }
 
     ControllerConfigureForTransfer(pDevice, pRequest);

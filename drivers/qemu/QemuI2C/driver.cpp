@@ -2,13 +2,13 @@
 
 Copyright (c) Microsoft Corporation.  All rights reserved.
 
-Module Name: 
+Module Name:
 
     driver.cpp
 
 Abstract:
 
-    This module contains the WDF driver initialization 
+    This module contains the WDF driver initialization
     functions for the controller driver.
 
 Environment:
@@ -27,11 +27,10 @@ Revision History:
 #include "driver.tmh"
 
 NTSTATUS
-#pragma prefast(suppress:__WARNING_DRIVER_FUNCTION_TYPE, "thanks, i know this already")
+#pragma prefast(suppress : __WARNING_DRIVER_FUNCTION_TYPE, "thanks, i know this already")
 DriverEntry(
-    _In_ PDRIVER_OBJECT  DriverObject,
-    _In_ PUNICODE_STRING RegistryPath
-    )
+    _In_ PDRIVER_OBJECT DriverObject,
+    _In_ PUNICODE_STRING RegistryPath)
 {
     WDF_DRIVER_CONFIG driverConfig;
     WDF_OBJECT_ATTRIBUTES driverAttributes;
@@ -60,16 +59,16 @@ DriverEntry(
     if (!NT_SUCCESS(status))
     {
         Trace(
-            TRACE_LEVEL_ERROR, 
+            TRACE_LEVEL_ERROR,
             TRACE_FLAG_WDFLOADING,
-            "Error creating WDF driver object - %!STATUS!", 
+            "Error creating WDF driver object - %!STATUS!",
             status);
 
         goto exit;
     }
 
     Trace(
-        TRACE_LEVEL_VERBOSE, 
+        TRACE_LEVEL_VERBOSE,
         TRACE_FLAG_WDFLOADING,
         "Created WDFDRIVER %p",
         fxDriver);
@@ -81,10 +80,8 @@ exit:
     return status;
 }
 
-VOID
-OnDriverCleanup(
-    _In_ WDFOBJECT Object
-    )
+VOID OnDriverCleanup(
+    _In_ WDFOBJECT Object)
 {
     UNREFERENCED_PARAMETER(Object);
 
@@ -93,14 +90,13 @@ OnDriverCleanup(
 
 NTSTATUS
 OnDeviceAdd(
-    _In_    WDFDRIVER       FxDriver,
-    _Inout_ PWDFDEVICE_INIT FxDeviceInit
-    )
+    _In_ WDFDRIVER FxDriver,
+    _Inout_ PWDFDEVICE_INIT FxDeviceInit)
 /*++
- 
+
   Routine Description:
 
-    This routine creates the device object for an SPB 
+    This routine creates the device object for an SPB
     controller and the device's child objects.
 
   Arguments:
@@ -118,27 +114,27 @@ OnDeviceAdd(
 
     PPBC_DEVICE pDevice;
     NTSTATUS status;
-    
+
     UNREFERENCED_PARAMETER(FxDriver);
 
     //
     // Configure DeviceInit structure
     //
-    
+
     status = SpbDeviceInitConfig(FxDeviceInit);
 
     if (!NT_SUCCESS(status))
     {
         Trace(
-            TRACE_LEVEL_ERROR, 
+            TRACE_LEVEL_ERROR,
             TRACE_FLAG_WDFLOADING,
-            "Failed SpbDeviceInitConfig() for WDFDEVICE_INIT %p - %!STATUS!", 
+            "Failed SpbDeviceInitConfig() for WDFDEVICE_INIT %p - %!STATUS!",
             FxDeviceInit,
             status);
 
         goto exit;
-    }  
-        
+    }
+
     //
     // Setup PNP/Power callbacks.
     //
@@ -158,15 +154,14 @@ OnDeviceAdd(
     }
 
     //
-    // Note: The SPB class extension sets a default 
-    //       security descriptor to allow access to 
-    //       user-mode drivers. This can be overridden 
+    // Note: The SPB class extension sets a default
+    //       security descriptor to allow access to
+    //       user-mode drivers. This can be overridden
     //       by calling WdfDeviceInitAssignSDDLString()
     //       with the desired setting. This must be done
     //       after calling SpbDeviceInitConfig() but
     //       before WdfDeviceCreate().
     //
-    
 
     //
     // Create the device.
@@ -178,16 +173,16 @@ OnDeviceAdd(
         WDFDEVICE fxDevice;
 
         status = WdfDeviceCreate(
-            &FxDeviceInit, 
+            &FxDeviceInit,
             &deviceAttributes,
             &fxDevice);
 
         if (!NT_SUCCESS(status))
         {
             Trace(
-                TRACE_LEVEL_ERROR, 
+                TRACE_LEVEL_ERROR,
                 TRACE_FLAG_WDFLOADING,
-                "Failed to create WDFDEVICE from WDFDEVICE_INIT %p - %!STATUS!", 
+                "Failed to create WDFDEVICE from WDFDEVICE_INIT %p - %!STATUS!",
                 FxDeviceInit,
                 status);
 
@@ -199,19 +194,19 @@ OnDeviceAdd(
 
         pDevice->FxDevice = fxDevice;
     }
-        
+
     //
     // Ensure device is disable-able
     //
-    
+
     {
         WDF_DEVICE_STATE deviceState;
         WDF_DEVICE_STATE_INIT(&deviceState);
-        
+
         deviceState.NotDisableable = WdfFalse;
         WdfDeviceSetDeviceState(pDevice->FxDevice, &deviceState);
     }
-    
+
     //
     // Bind a SPB controller object to the device.
     //
@@ -225,28 +220,28 @@ OnDeviceAdd(
         // does not need to respond to target disconnect.
         //
 
-        spbConfig.EvtSpbTargetConnect    = OnTargetConnect;
+        spbConfig.EvtSpbTargetConnect = OnTargetConnect;
 
         //
         // Register for IO callbacks.
         //
 
         spbConfig.ControllerDispatchType = WdfIoQueueDispatchSequential;
-        spbConfig.PowerManaged           = WdfTrue;
-        spbConfig.EvtSpbIoRead           = OnRead;
-        spbConfig.EvtSpbIoWrite          = OnWrite;
-        spbConfig.EvtSpbIoSequence       = OnSequence;
-        spbConfig.EvtSpbControllerLock   = OnControllerLock;
+        spbConfig.PowerManaged = WdfTrue;
+        spbConfig.EvtSpbIoRead = OnRead;
+        spbConfig.EvtSpbIoWrite = OnWrite;
+        spbConfig.EvtSpbIoSequence = OnSequence;
+        spbConfig.EvtSpbControllerLock = OnControllerLock;
         spbConfig.EvtSpbControllerUnlock = OnControllerUnlock;
 
         status = SpbDeviceInitialize(pDevice->FxDevice, &spbConfig);
-       
+
         if (!NT_SUCCESS(status))
         {
             Trace(
-                TRACE_LEVEL_ERROR, 
+                TRACE_LEVEL_ERROR,
                 TRACE_FLAG_WDFLOADING,
-                "Failed SpbDeviceInitialize() for WDFDEVICE %p - %!STATUS!", 
+                "Failed SpbDeviceInitialize() for WDFDEVICE %p - %!STATUS!",
                 pDevice->FxDevice,
                 status);
 
@@ -268,7 +263,7 @@ OnDeviceAdd(
     //
 
     {
-        WDF_OBJECT_ATTRIBUTES targetAttributes; 
+        WDF_OBJECT_ATTRIBUTES targetAttributes;
         WDF_OBJECT_ATTRIBUTES_INIT_CONTEXT_TYPE(&targetAttributes, PBC_TARGET);
 
         SpbControllerSetTargetAttributes(pDevice->FxDevice, &targetAttributes);
@@ -279,14 +274,14 @@ OnDeviceAdd(
     //
 
     {
-        WDF_OBJECT_ATTRIBUTES requestAttributes; 
+        WDF_OBJECT_ATTRIBUTES requestAttributes;
         WDF_OBJECT_ATTRIBUTES_INIT_CONTEXT_TYPE(&requestAttributes, PBC_REQUEST);
-        
+
         //
-        // NOTE: Be mindful when registering for EvtCleanupCallback or 
+        // NOTE: Be mindful when registering for EvtCleanupCallback or
         //       EvtDestroyCallback. IO requests arriving in the class
         //       extension, but not presented to the driver (due to
-        //       cancellation), will still have their cleanup and destroy 
+        //       cancellation), will still have their cleanup and destroy
         //       callbacks invoked.
         //
 
@@ -294,49 +289,70 @@ OnDeviceAdd(
     }
 
     //
-    // This controller is serviced by polling its STATUS register.
-    // The QEMU "ODP socket-backed I2C controller" exposes no interrupt
-    // resource in its ACPI _CRS, so no WDFINTERRUPT object is created.
-    // Transfers complete synchronously at PASSIVE_LEVEL inside the SPB
-    // read/write/sequence callbacks.
+    // Create the spin lock to synchronize access to the controller
+    // driver. A spin lock is used (instead of a wait lock) so it can be
+    // acquired from the interrupt DPC at DISPATCH_LEVEL.
     //
 
-    pDevice->InterruptObject = NULL;
-
-    //
-    // Create the wait lock to synchronize access to the controller
-    // driver. A wait lock is used (instead of a spin lock) because the
-    // polled transfer path must run at PASSIVE_LEVEL.
-    //
-    
     WDF_OBJECT_ATTRIBUTES attributes;
     WDF_OBJECT_ATTRIBUTES_INIT(&attributes);
     attributes.ParentObject = pDevice->FxDevice;
 
-    status = WdfWaitLockCreate(
-       &attributes,
-       &pDevice->Lock);
-    
+    status = WdfSpinLockCreate(
+        &attributes,
+        &pDevice->Lock);
+
     if (!NT_SUCCESS(status))
     {
         Trace(
-            TRACE_LEVEL_ERROR, 
-            TRACE_FLAG_WDFLOADING, 
-            "Failed to create device wait lock for WDFDEVICE %p - %!STATUS!", 
+            TRACE_LEVEL_ERROR,
+            TRACE_FLAG_WDFLOADING,
+            "Failed to create device spin lock for WDFDEVICE %p - %!STATUS!",
             pDevice->FxDevice,
             status);
 
         goto exit;
     }
-    
+
+    //
+    // Create the interrupt object. KMDF connects it to the controller's
+    // CmResourceTypeInterrupt resource published in the ACPI _CRS.
+    //
+
+    {
+        WDF_INTERRUPT_CONFIG interruptConfig;
+        WDF_INTERRUPT_CONFIG_INIT(
+            &interruptConfig,
+            OnInterruptIsr,
+            OnInterruptDpc);
+
+        status = WdfInterruptCreate(
+            pDevice->FxDevice,
+            &interruptConfig,
+            WDF_NO_OBJECT_ATTRIBUTES,
+            &pDevice->InterruptObject);
+
+        if (!NT_SUCCESS(status))
+        {
+            Trace(
+                TRACE_LEVEL_ERROR,
+                TRACE_FLAG_WDFLOADING,
+                "Failed to create interrupt object for WDFDEVICE %p - %!STATUS!",
+                pDevice->FxDevice,
+                status);
+
+            goto exit;
+        }
+    }
+
     //
     // Configure idle settings to use system
     // managed idle timeout.
     //
-    {    
+    {
         WDF_DEVICE_POWER_POLICY_IDLE_SETTINGS idleSettings;
         WDF_DEVICE_POWER_POLICY_IDLE_SETTINGS_INIT(
-            &idleSettings, 
+            &idleSettings,
             IdleCannotWakeFromS0);
 
         //
@@ -347,7 +363,7 @@ OnDeviceAdd(
         idleSettings.IdleTimeout = IDLE_TIMEOUT_MONITOR_ON;
 
         status = WdfDeviceAssignS0IdleSettings(
-            pDevice->FxDevice, 
+            pDevice->FxDevice,
             &idleSettings);
 
         if (!NT_SUCCESS(status))
@@ -358,7 +374,7 @@ OnDeviceAdd(
                 "Failed to initalize S0 idle settings for WDFDEVICE %p- %!STATUS!",
                 pDevice->FxDevice,
                 status);
-                
+
             goto exit;
         }
     }

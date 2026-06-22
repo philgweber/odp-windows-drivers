@@ -11,10 +11,10 @@ Abstract:
     This module contains the controller-specific functions
     for the QEMU "ODP socket-backed I2C controller".
 
-    The controller is driven by polling its STATUS register;
-    the QEMU device exposes no interrupt line in its ACPI _CRS.
-    All transfers complete synchronously inside the SPB
-    read/write/sequence callbacks at PASSIVE_LEVEL.
+    The controller is interrupt-driven. SPB read/write/sequence
+    callbacks kick off a transfer and return; completion (and any NAK /
+    protocol error) is signalled by the CMD_DONE interrupt and the
+    transfer is advanced asynchronously by a DPC state machine.
 
     Hardware command model (see hw/odp/i2c-controller.c):
       - Write DATA = (CMD_START << 8) | (addr7 << 1 | rw) to address a
@@ -53,151 +53,23 @@ const PBC_TRANSFER_SETTINGS g_TransferSettings[] =
 
 /////////////////////////////////////////////////
 //
-// Low-level polled hardware helpers.
+// Low-level hardware helpers.
 //
 /////////////////////////////////////////////////
 
-_IRQL_requires_max_(PASSIVE_LEVEL) static VOID
-    QemuI2cStall(
-        _In_ ULONG Microseconds)
-/*++
+//
+// Posts a command word to the DATA register without waiting. Command
+// completion (and any NAK / protocol error) is signalled asynchronously
+// through the CMD_DONE interrupt and serviced by the DPC state machine.
+//
 
-  Routine Description:
-
-    Busy-waits (for short intervals) or sleeps (for longer intervals) at
-    PASSIVE_LEVEL for the requested number of microseconds.
-
---*/
+static VOID
+QemuI2cPostCommand(
+    _In_ PPBC_DEVICE pDevice,
+    _In_ ULONG Command,
+    _In_ UCHAR Data)
 {
-    if (Microseconds == 0)
-    {
-        return;
-    }
-
-    if (Microseconds < 100)
-    {
-        KeStallExecutionProcessor(Microseconds);
-    }
-    else
-    {
-        LARGE_INTEGER interval;
-
-        //
-        // Relative timeout in 100ns units (negative).
-        //
-
-        interval.QuadPart = -((LONGLONG)Microseconds * 10);
-        KeDelayExecutionThread(KernelMode, FALSE, &interval);
-    }
-}
-
-_IRQL_requires_max_(PASSIVE_LEVEL) static NTSTATUS
-    QemuI2cPollStatus(
-        _In_ PPBC_DEVICE pDevice,
-        _In_ ULONG WaitBits,
-        _Out_ PULONG pStatus)
-/*++
-
-  Routine Description:
-
-    Polls the STATUS register until any of WaitBits is set or a timeout
-    elapses. Spins for the first millisecond (fast path for a responsive
-    controller) and then sleeps in 1 ms increments to avoid burning the
-    CPU on the (rare) slow path.
-
-  Return Value:
-
-    STATUS_SUCCESS if one of WaitBits was observed, STATUS_IO_TIMEOUT
-    otherwise. *pStatus always receives the last STATUS value read.
-
---*/
-{
-    ULONG elapsedUs = 0;
-    ULONG status;
-
-    for (;;)
-    {
-        status = pDevice->pRegisters->Status.Read();
-
-        if ((status & WaitBits) != 0)
-        {
-            *pStatus = status;
-            return STATUS_SUCCESS;
-        }
-
-        if (elapsedUs >= QEMU_I2C_POLL_TIMEOUT_US)
-        {
-            *pStatus = status;
-            return STATUS_IO_TIMEOUT;
-        }
-
-        if (elapsedUs < 1000)
-        {
-            KeStallExecutionProcessor(QEMU_I2C_POLL_INTERVAL_US);
-            elapsedUs += QEMU_I2C_POLL_INTERVAL_US;
-        }
-        else
-        {
-            QemuI2cStall(1000);
-            elapsedUs += 1000;
-        }
-    }
-}
-
-_IRQL_requires_max_(PASSIVE_LEVEL) static NTSTATUS
-    QemuI2cIssueCommand(
-        _In_ PPBC_DEVICE pDevice,
-        _In_ ULONG Command,
-        _In_ UCHAR Data,
-        _Out_ PULONG pStatus)
-/*++
-
-  Routine Description:
-
-    Writes a command word to the DATA register and waits for the command
-    to complete (CMD_DONE), or for a NAK / protocol error. The latched
-    status bits are write-1-to-clear acknowledged before returning so the
-    next command starts from a clean state.
-
-  Return Value:
-
-    STATUS_SUCCESS if the command completed (caller must inspect *pStatus
-    for NAK / PROTO_ERR), STATUS_IO_TIMEOUT if it never completed.
-
---*/
-{
-    NTSTATUS status;
-    ULONG hwStatus;
-
     pDevice->pRegisters->Data.Write(QEMU_I2C_MAKE_DATA(Command, Data));
-
-    status = QemuI2cPollStatus(
-        pDevice,
-        QEMU_I2C_STATUS_CMD_DONE | QEMU_I2C_STATUS_NAK | QEMU_I2C_STATUS_PROTO_ERR,
-        &hwStatus);
-
-    //
-    // Acknowledge (write-1-to-clear) the latched status bits.
-    //
-
-    if ((hwStatus & QEMU_I2C_STATUS_W1C_MASK) != 0)
-    {
-        pDevice->pRegisters->Status.Write(hwStatus & QEMU_I2C_STATUS_W1C_MASK);
-    }
-
-    *pStatus = hwStatus;
-    return status;
-}
-
-_IRQL_requires_max_(PASSIVE_LEVEL) static NTSTATUS
-    QemuI2cStart(
-        _In_ PPBC_DEVICE pDevice,
-        _In_ UCHAR Address7Bit,
-        _In_ BOOLEAN Read,
-        _Out_ PULONG pStatus)
-{
-    UCHAR addressByte = (UCHAR)((Address7Bit << 1) | (Read ? 0x01 : 0x00));
-    return QemuI2cIssueCommand(pDevice, QEMU_I2C_CMD_START, addressByte, pStatus);
 }
 
 /////////////////////////////////////////////////
@@ -224,7 +96,8 @@ VOID ControllerInitialize(
     {
         //
         // Soft reset the controller state machine and RX FIFO, clear any
-        // latched status, and leave interrupts disabled (polled driver).
+        // latched status, and leave interrupts disabled until a transfer
+        // enables them.
         //
 
         pDevice->pRegisters->Ctrl.Write(QEMU_I2C_CTRL_RESET);
@@ -265,7 +138,7 @@ VOID ControllerUninitialize(
 
 /////////////////////////////////////////////////
 //
-// Transfer handling (polled).
+// Transfer handling (interrupt-driven).
 //
 /////////////////////////////////////////////////
 
@@ -276,9 +149,10 @@ VOID ControllerConfigureForTransfer(
 
   Routine Description:
 
-    This routine performs an entire (sub)transfer synchronously by
-    polling the controller, then completes it. Because the controller is
-    polled there is no asynchronous interrupt phase.
+    This routine begins a (sub)transfer by enabling the command-complete
+    interrupt and posting the addressing (repeated) START. The transfer
+    then advances asynchronously, one controller command per CMD_DONE
+    interrupt, in ControllerProcessInterrupts.
 
   Arguments:
 
@@ -287,14 +161,13 @@ VOID ControllerConfigureForTransfer(
 
   Return Value:
 
-    None. The request transfer is completed via ControllerCompleteTransfer.
+    None. The request transfer is completed via ControllerCompleteTransfer
+    (synchronously here only on an immediate validation failure).
 
 --*/
 {
     FuncEntry(TRACE_FLAG_TRANSFER);
 
-    NTSTATUS status;
-    ULONG hwStatus = 0;
     PPBC_TARGET pTarget;
     UCHAR address7Bit;
     BOOLEAN read;
@@ -311,7 +184,7 @@ VOID ControllerConfigureForTransfer(
 
     pRequest->Settings = g_TransferSettings[pRequest->SequencePosition];
     pRequest->Status = STATUS_SUCCESS;
-    pDevice->InterruptStatus = 0;
+    pRequest->Information = 0;
 
     //
     // The QEMU controller only supports 7-bit addressing.
@@ -326,7 +199,9 @@ VOID ControllerConfigureForTransfer(
             "(WDFDEVICE %p)",
             pDevice->FxDevice);
 
-        status = STATUS_NOT_SUPPORTED;
+        pRequest->Status = STATUS_NOT_SUPPORTED;
+        pRequest->Information = 0;
+        ControllerCompleteTransfer(pDevice, pRequest, TRUE);
         goto exit;
     }
 
@@ -347,311 +222,46 @@ VOID ControllerConfigureForTransfer(
         pRequest->Settings.IsEnd);
 
     //
-    // Address the target with a (repeated) START carrying the direction
-    // bit for this transfer. The QEMU controller accepts a START both
+    // Enable the command-complete interrupt and post the (repeated) START
+    // carrying the direction bit. The QEMU controller accepts a START both
     // from the idle bus (Single / First) and from a bus that is already
     // open (repeated START for Continue / Last and direction changes).
+    // Completion arrives via the CMD_DONE interrupt and is serviced by
+    // ControllerProcessInterrupts.
     //
 
-    status = QemuI2cStart(pDevice, address7Bit, read, &hwStatus);
+    //
+    // Clear the latched ISR/DPC status under the interrupt lock so every
+    // access to InterruptStatus is uniformly serialized with the ISR.
+    // (The controller interrupt is disabled at this point either way, but
+    // taking the lock here removes the unwritten "interrupts are off"
+    // invariant. Lock order is device-lock -> interrupt-lock, matching
+    // OnInterruptDpc.)
+    //
+    WdfInterruptAcquireLock(pDevice->InterruptObject);
+    pDevice->InterruptStatus = 0;
+    WdfInterruptReleaseLock(pDevice->InterruptObject);
 
-    if (!NT_SUCCESS(status))
-    {
-        Trace(
-            TRACE_LEVEL_ERROR,
-            TRACE_FLAG_TRANSFER,
-            "Timeout addressing target 0x%lx (WDFDEVICE %p) - %!STATUS!",
-            pTarget->Settings.Address,
-            pDevice->FxDevice,
-            status);
-
-        status = STATUS_IO_TIMEOUT;
-        goto exit;
-    }
-
-    if (TestAnyBits(hwStatus, QEMU_I2C_STATUS_PROTO_ERR))
-    {
-        status = STATUS_IO_DEVICE_ERROR;
-        goto exit;
-    }
-
-    if (TestAnyBits(hwStatus, QEMU_I2C_STATUS_NAK))
-    {
-        //
-        // An address NACK indicates that no device responded at this
-        // address.
-        //
-
-        Trace(
-            TRACE_LEVEL_ERROR,
-            TRACE_FLAG_TRANSFER,
-            "NACK addressing target 0x%lx (WDFDEVICE %p)",
-            pTarget->Settings.Address,
-            pDevice->FxDevice);
-
-        status = STATUS_NO_SUCH_DEVICE;
-        goto exit;
-    }
+    PbcDeviceSetInterruptMask(
+        pDevice,
+        QEMU_I2C_STATUS_CMD_DONE | QEMU_I2C_STATUS_NAK | QEMU_I2C_STATUS_PROTO_ERR);
 
     //
-    // Transfer the data phase (TX or RX).
+    // Arm CMD_DONE. On the sequence-chaining path the DPC tail re-enables
+    // interrupts idempotently from the mask; this enable is what covers the
+    // initial (non-DPC, PASSIVE_LEVEL) transfer that has no DPC tail.
     //
+    ControllerEnableInterrupts(pDevice, QEMU_I2C_STATUS_CMD_DONE);
 
-    status = ControllerTransferData(pDevice, pRequest);
-
-    if (!NT_SUCCESS(status))
-    {
-        Trace(
-            TRACE_LEVEL_ERROR,
-            TRACE_FLAG_TRANSFER,
-            "Error transferring data for target 0x%lx (WDFDEVICE %p) - %!STATUS!",
-            pTarget->Settings.Address,
-            pDevice->FxDevice,
-            status);
-
-        goto exit;
-    }
-
-    //
-    // Issue a STOP to release the bus if this is the end of the
-    // (sequence of) transfer(s).
-    //
-
-    if (pRequest->Settings.IsEnd)
-    {
-        status = QemuI2cIssueCommand(pDevice, QEMU_I2C_CMD_STOP, 0, &hwStatus);
-
-        if (!NT_SUCCESS(status))
-        {
-            Trace(
-                TRACE_LEVEL_ERROR,
-                TRACE_FLAG_TRANSFER,
-                "Timeout issuing STOP for target 0x%lx (WDFDEVICE %p) - %!STATUS!",
-                pTarget->Settings.Address,
-                pDevice->FxDevice,
-                status);
-
-            status = STATUS_IO_TIMEOUT;
-            goto exit;
-        }
-    }
-
-    ControllerCompleteTransfer(pDevice, pRequest, FALSE);
-
-exit:
-    // if abort set the status and information and complete the transfer aborted
-    if (status != STATUS_SUCCESS)
-    {
-        pRequest->Status = status;
-        pRequest->Information = 0;
-        ControllerCompleteTransfer(pDevice, pRequest, TRUE);
-    }
-
-    FuncExit(TRACE_FLAG_TRANSFER);
-}
-
-NTSTATUS
-ControllerTransferData(
-    _In_ PPBC_DEVICE pDevice,
-    _In_ PPBC_REQUEST pRequest)
-/*++
-
-  Routine Description:
-
-    This routine transfers the data phase of a transfer to or from the
-    device. The bus has already been addressed with a START.
-
-  Arguments:
-
-    pDevice - a pointer to the PBC device context
-    pRequest - a pointer to the PBC request context
-
-  Return Value:
-
-    STATUS_SUCCESS on success (including a data NAK, which is reported as
-    a short transfer via pRequest->Information). An error status if the
-    controller timed out or reported a protocol error.
-
---*/
-{
-    FuncEntry(TRACE_FLAG_TRANSFER);
-
-    NTSTATUS status = STATUS_SUCCESS;
-    ULONG hwStatus = 0;
-    PPBC_TARGET pTarget = pDevice->pCurrentTarget;
-    UCHAR address7Bit = (UCHAR)(pTarget->Settings.Address & 0x7F);
-
-    if (pRequest->Direction == SpbTransferDirectionToDevice)
-    {
-        //
-        // Write: transmit each byte and watch for a data NAK.
-        //
-
-        for (size_t i = 0; i < pRequest->Length; i++)
-        {
-            UCHAR dataByte;
-
-            status = PbcRequestGetByte(pRequest, i, &dataByte);
-
-            if (!NT_SUCCESS(status))
-            {
-                goto exit;
-            }
-
-            status = QemuI2cIssueCommand(
-                pDevice,
-                QEMU_I2C_CMD_TX,
-                dataByte,
-                &hwStatus);
-
-            if (!NT_SUCCESS(status))
-            {
-                goto exit;
-            }
-
-            if (TestAnyBits(hwStatus, QEMU_I2C_STATUS_PROTO_ERR))
-            {
-                status = STATUS_IO_DEVICE_ERROR;
-                goto exit;
-            }
-
-            if (TestAnyBits(hwStatus, QEMU_I2C_STATUS_NAK))
-            {
-                //
-                // Data NAK: the target accepted fewer bytes than offered.
-                // This is reported to the client as a short (successful)
-                // transfer.
-                //
-
-                Trace(
-                    TRACE_LEVEL_WARNING,
-                    TRACE_FLAG_TRANSFER,
-                    "Data NACK after %Iu byte(s) for address 0x%lx",
-                    pRequest->Information,
-                    pTarget->Settings.Address);
-
-                status = STATUS_SUCCESS;
-                goto exit;
-            }
-
-            pRequest->Information = i + 1;
-        }
-    }
-    else
-    {
-        //
-        // Read: request bursts of up to 256 bytes and drain the RX FIFO.
-        //
-
-        size_t offset = 0;
-        size_t remaining = pRequest->Length;
-        BOOLEAN firstChunk = TRUE;
-
-        while (remaining > 0)
-        {
-            ULONG chunk;
-
-            //
-            // After the first burst the controller requires a (repeated)
-            // START before another RX burst.
-            //
-
-            if (!firstChunk)
-            {
-                status = QemuI2cStart(pDevice, address7Bit, TRUE, &hwStatus);
-
-                if (!NT_SUCCESS(status))
-                {
-                    goto exit;
-                }
-
-                if (TestAnyBits(hwStatus, QEMU_I2C_STATUS_PROTO_ERR))
-                {
-                    status = STATUS_IO_DEVICE_ERROR;
-                    goto exit;
-                }
-
-                if (TestAnyBits(hwStatus, QEMU_I2C_STATUS_NAK))
-                {
-                    status = STATUS_NO_SUCH_DEVICE;
-                    goto exit;
-                }
-            }
-
-            chunk = (remaining > QEMU_I2C_RX_FIFO_SIZE) ? QEMU_I2C_RX_FIFO_SIZE : (ULONG)remaining;
-
-            //
-            // Kick off the burst. The DATA field is (count - 1).
-            //
-
-            status = QemuI2cIssueCommand(
-                pDevice,
-                QEMU_I2C_CMD_RX,
-                (UCHAR)(chunk - 1),
-                &hwStatus);
-
-            if (!NT_SUCCESS(status))
-            {
-                goto exit;
-            }
-
-            if (TestAnyBits(hwStatus, QEMU_I2C_STATUS_PROTO_ERR))
-            {
-                status = STATUS_IO_DEVICE_ERROR;
-                goto exit;
-            }
-
-            if (TestAnyBits(hwStatus, QEMU_I2C_STATUS_NAK))
-            {
-                status = STATUS_NO_SUCH_DEVICE;
-                goto exit;
-            }
-
-            //
-            // Drain the requested bytes from the RX FIFO.
-            //
-
-            for (ULONG j = 0; j < chunk; j++)
-            {
-                ULONG drainStatus;
-                ULONG value;
-
-                status = QemuI2cPollStatus(
-                    pDevice,
-                    QEMU_I2C_STATUS_RX_RDY,
-                    &drainStatus);
-
-                if (!NT_SUCCESS(status))
-                {
-                    goto exit;
-                }
-
-                value = pDevice->pRegisters->Data.Read();
-
-                status = PbcRequestSetByte(
-                    pRequest,
-                    offset,
-                    (UCHAR)(value & QEMU_I2C_DATA_DATA_MASK));
-
-                if (!NT_SUCCESS(status))
-                {
-                    goto exit;
-                }
-
-                offset++;
-                pRequest->Information = offset;
-            }
-
-            remaining -= chunk;
-            firstChunk = FALSE;
-        }
-    }
+    pRequest->Phase = TransferPhaseAddress;
+    QemuI2cPostCommand(
+        pDevice,
+        QEMU_I2C_CMD_START,
+        (UCHAR)((address7Bit << 1) | (read ? 0x01 : 0x00)));
 
 exit:
 
     FuncExit(TRACE_FLAG_TRANSFER);
-
-    return status;
 }
 
 VOID ControllerCompleteTransfer(
@@ -762,8 +372,8 @@ VOID ControllerCompleteTransfer(
     }
 
     //
-    // Mark the IO complete. The request is completed by the caller
-    // (the SPB IO callback) once this synchronous transfer returns.
+    // Mark the IO complete. The interrupt DPC completes the SPB
+    // request once it sees bIoComplete set.
     //
 
     pRequest->bIoComplete = TRUE;
@@ -777,17 +387,24 @@ exit:
 //
 // Interrupt helpers.
 //
-// The QEMU controller exposes no interrupt resource, so the driver runs
-// in polled mode and these routines are not used at run time. They are
-// retained as functional register accessors so the (unwired) ISR/DPC
-// scaffolding continues to compile and so the driver can be converted to
-// interrupt-driven operation if a future platform wires up the IRQ.
+// These register accessors are driven by the ISR/DPC to enable, read,
+// acknowledge, and disable the controller's interrupts while servicing a
+// transfer.
 //
 /////////////////////////////////////////////////
 
 VOID ControllerEnableInterrupts(
     _In_ PPBC_DEVICE pDevice,
     _In_ ULONG InterruptMask)
+/*++
+
+  Routine Description:
+
+    Enables the controller interrupt(s) corresponding to the supplied
+    STATUS-register bit mask by setting the matching CTRL interrupt-enable
+    bits.
+
+--*/
 {
     FuncEntry(TRACE_FLAG_TRANSFER);
 
@@ -795,7 +412,19 @@ VOID ControllerEnableInterrupts(
 
     if (pDevice->pRegisters != NULL)
     {
-        pDevice->pRegisters->Ctrl.SetBits(InterruptMask & QEMU_I2C_CTRL_IE_MASK);
+        ULONG ctrlBits = 0;
+
+        if (TestAnyBits(InterruptMask, QEMU_I2C_STATUS_CMD_DONE))
+        {
+            ctrlBits |= QEMU_I2C_CTRL_CMD_DONE_IE;
+        }
+
+        if (TestAnyBits(InterruptMask, QEMU_I2C_STATUS_RX_RDY))
+        {
+            ctrlBits |= QEMU_I2C_CTRL_RX_RDY_IE;
+        }
+
+        pDevice->pRegisters->Ctrl.SetBits(ctrlBits);
     }
 
     FuncExit(TRACE_FLAG_TRANSFER);
@@ -853,6 +482,72 @@ VOID ControllerAcknowledgeInterrupts(
     FuncExit(TRACE_FLAG_TRANSFER);
 }
 
+//
+// Issues a STOP (if this transfer ends the bus sequence) or completes the
+// (sub)transfer immediately. Called from the interrupt state machine once
+// the data phase has finished.
+//
+
+static VOID
+ControllerFinishDataPhase(
+    _In_ PPBC_DEVICE pDevice,
+    _In_ PPBC_REQUEST pRequest)
+{
+    if (pRequest->Settings.IsEnd)
+    {
+        pRequest->Phase = TransferPhaseStop;
+        QemuI2cPostCommand(pDevice, QEMU_I2C_CMD_STOP, 0);
+    }
+    else
+    {
+        ControllerCompleteTransfer(pDevice, pRequest, FALSE);
+    }
+}
+
+//
+// Posts the next TX byte (at offset pRequest->Information) and advances to
+// the TX phase. Completes the request on a buffer-access failure.
+//
+
+static VOID
+ControllerStartTxByte(
+    _In_ PPBC_DEVICE pDevice,
+    _In_ PPBC_REQUEST pRequest)
+{
+    UCHAR dataByte = 0;
+    NTSTATUS status = PbcRequestGetByte(pRequest, pRequest->Information, &dataByte);
+
+    if (!NT_SUCCESS(status))
+    {
+        pRequest->Status = status;
+        pRequest->Information = 0;
+        ControllerCompleteTransfer(pDevice, pRequest, TRUE);
+        return;
+    }
+
+    pRequest->Phase = TransferPhaseTx;
+    QemuI2cPostCommand(pDevice, QEMU_I2C_CMD_TX, dataByte);
+}
+
+//
+// Posts the next RX burst (up to the FIFO size) and advances to the RX
+// phase. The DATA field is (count - 1).
+//
+
+static VOID
+ControllerStartRxBurst(
+    _In_ PPBC_DEVICE pDevice,
+    _In_ PPBC_REQUEST pRequest)
+{
+    size_t remaining = pRequest->Length - pRequest->Information;
+    ULONG chunk = (remaining > QEMU_I2C_RX_FIFO_SIZE)
+                      ? QEMU_I2C_RX_FIFO_SIZE
+                      : (ULONG)remaining;
+
+    pRequest->Phase = TransferPhaseRx;
+    QemuI2cPostCommand(pDevice, QEMU_I2C_CMD_RX, (UCHAR)(chunk - 1));
+}
+
 VOID ControllerProcessInterrupts(
     _In_ PPBC_DEVICE pDevice,
     _In_ PPBC_REQUEST pRequest,
@@ -861,15 +556,214 @@ VOID ControllerProcessInterrupts(
 
   Routine Description:
 
-    Not used in polled mode. Retained for ISR/DPC scaffolding.
+    Advances the interrupt-driven transfer state machine in response to a
+    CMD_DONE interrupt. Each invocation processes the completion of the
+    command posted for the current phase and posts the next command (or
+    completes the transfer). Runs at DISPATCH_LEVEL from the DPC.
+
+  Arguments:
+
+    pDevice - a pointer to the PBC device context
+    pRequest - a pointer to the PBC request context
+    InterruptStatus - the latched STATUS bits captured by the ISR
+
+  Return Value:
+
+    None.
 
 --*/
 {
     FuncEntry(TRACE_FLAG_TRANSFER);
 
-    UNREFERENCED_PARAMETER(pDevice);
-    UNREFERENCED_PARAMETER(pRequest);
-    UNREFERENCED_PARAMETER(InterruptStatus);
+    PPBC_TARGET pTarget;
+    UCHAR address7Bit;
+
+    NT_ASSERT(pDevice != NULL);
+    NT_ASSERT(pRequest != NULL);
+
+    pTarget = pDevice->pCurrentTarget;
+    NT_ASSERT(pTarget != NULL);
+
+    address7Bit = (UCHAR)(pTarget->Settings.Address & 0x7F);
+
+    //
+    // A protocol error indicates illegal command ordering and is fatal.
+    //
+
+    if (TestAnyBits(InterruptStatus, QEMU_I2C_STATUS_PROTO_ERR))
+    {
+        pRequest->Status = STATUS_IO_DEVICE_ERROR;
+        pRequest->Information = 0;
+        ControllerCompleteTransfer(pDevice, pRequest, TRUE);
+        goto exit;
+    }
+
+    switch (pRequest->Phase)
+    {
+    case TransferPhaseAddress:
+
+        //
+        // Addressing completed. A NAK here means no device answered.
+        //
+
+        if (TestAnyBits(InterruptStatus, QEMU_I2C_STATUS_NAK))
+        {
+            Trace(
+                TRACE_LEVEL_ERROR,
+                TRACE_FLAG_TRANSFER,
+                "NACK addressing target 0x%lx (WDFDEVICE %p)",
+                pTarget->Settings.Address,
+                pDevice->FxDevice);
+
+            pRequest->Status = STATUS_NO_SUCH_DEVICE;
+            pRequest->Information = 0;
+            ControllerCompleteTransfer(pDevice, pRequest, TRUE);
+            goto exit;
+        }
+
+        if (pRequest->Length == 0)
+        {
+            ControllerFinishDataPhase(pDevice, pRequest);
+        }
+        else if (pRequest->Direction == SpbTransferDirectionToDevice)
+        {
+            ControllerStartTxByte(pDevice, pRequest);
+        }
+        else
+        {
+            ControllerStartRxBurst(pDevice, pRequest);
+        }
+
+        break;
+
+    case TransferPhaseTx:
+
+        if (TestAnyBits(InterruptStatus, QEMU_I2C_STATUS_NAK))
+        {
+            //
+            // Data NAK: the target accepted fewer bytes than offered. This
+            // is reported to the client as a short (successful) transfer.
+            //
+
+            Trace(
+                TRACE_LEVEL_WARNING,
+                TRACE_FLAG_TRANSFER,
+                "Data NACK after %Iu byte(s) for address 0x%lx",
+                pRequest->Information,
+                pTarget->Settings.Address);
+
+            ControllerFinishDataPhase(pDevice, pRequest);
+            goto exit;
+        }
+
+        //
+        // Byte accepted.
+        //
+
+        pRequest->Information++;
+
+        if (pRequest->Information < pRequest->Length)
+        {
+            ControllerStartTxByte(pDevice, pRequest);
+        }
+        else
+        {
+            ControllerFinishDataPhase(pDevice, pRequest);
+        }
+
+        break;
+
+    case TransferPhaseRx:
+    {
+        size_t remaining;
+        ULONG chunk;
+
+        if (TestAnyBits(InterruptStatus, QEMU_I2C_STATUS_NAK))
+        {
+            pRequest->Status = STATUS_NO_SUCH_DEVICE;
+            pRequest->Information = 0;
+            ControllerCompleteTransfer(pDevice, pRequest, TRUE);
+            goto exit;
+        }
+
+        //
+        // The whole burst has arrived in the RX FIFO; drain it.
+        //
+
+        remaining = pRequest->Length - pRequest->Information;
+        chunk = (remaining > QEMU_I2C_RX_FIFO_SIZE)
+                    ? QEMU_I2C_RX_FIFO_SIZE
+                    : (ULONG)remaining;
+
+        for (ULONG j = 0; j < chunk; j++)
+        {
+            ULONG value = pDevice->pRegisters->Data.Read();
+            NTSTATUS st = PbcRequestSetByte(
+                pRequest,
+                pRequest->Information,
+                (UCHAR)(value & QEMU_I2C_DATA_DATA_MASK));
+
+            if (!NT_SUCCESS(st))
+            {
+                pRequest->Status = st;
+                pRequest->Information = 0;
+                ControllerCompleteTransfer(pDevice, pRequest, TRUE);
+                goto exit;
+            }
+
+            pRequest->Information++;
+        }
+
+        if (pRequest->Information < pRequest->Length)
+        {
+            //
+            // More to read: the controller requires a repeated START
+            // before the next RX burst.
+            //
+
+            pRequest->Phase = TransferPhaseRxRestart;
+            QemuI2cPostCommand(
+                pDevice,
+                QEMU_I2C_CMD_START,
+                (UCHAR)((address7Bit << 1) | 0x01));
+        }
+        else
+        {
+            ControllerFinishDataPhase(pDevice, pRequest);
+        }
+
+        break;
+    }
+
+    case TransferPhaseRxRestart:
+
+        if (TestAnyBits(InterruptStatus, QEMU_I2C_STATUS_NAK))
+        {
+            pRequest->Status = STATUS_NO_SUCH_DEVICE;
+            pRequest->Information = 0;
+            ControllerCompleteTransfer(pDevice, pRequest, TRUE);
+            goto exit;
+        }
+
+        ControllerStartRxBurst(pDevice, pRequest);
+        break;
+
+    case TransferPhaseStop:
+
+        //
+        // The bus has been released; the (sub)transfer succeeded.
+        //
+
+        ControllerCompleteTransfer(pDevice, pRequest, FALSE);
+        break;
+
+    default:
+
+        NT_ASSERTMSG("Unexpected transfer phase in ControllerProcessInterrupts", FALSE);
+        break;
+    }
+
+exit:
 
     FuncExit(TRACE_FLAG_TRANSFER);
 }

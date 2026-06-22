@@ -132,6 +132,21 @@ typedef struct PBC_TRANSFER_SETTINGS
     BOOLEAN IsEnd;
 } PBC_TRANSFER_SETTINGS, *PPBC_TRANSFER_SETTINGS;
 
+//
+// Phase of the interrupt-driven transfer state machine. Each phase
+// corresponds to a controller command that has been posted and whose
+// completion is signalled by a CMD_DONE interrupt.
+//
+
+typedef enum TRANSFER_PHASE
+{
+    TransferPhaseAddress,   // (repeated) START posted, waiting CMD_DONE
+    TransferPhaseTx,        // TX byte posted, waiting CMD_DONE
+    TransferPhaseRx,        // RX burst posted, waiting CMD_DONE then drain
+    TransferPhaseRxRestart, // repeated START posted before the next RX burst
+    TransferPhaseStop,      // STOP posted, waiting CMD_DONE
+} TRANSFER_PHASE;
+
 /////////////////////////////////////////////////
 //
 // Context definitions.
@@ -164,18 +179,15 @@ struct PBC_DEVICE
     // There cannot be more than one current target.
     PPBC_TARGET pCurrentTarget;
 
-    // Variables to track enabled interrupts
-    // and status. The QEMU controller is polled (no interrupt
-    // resource), so these are retained only for the unwired
-    // ISR/DPC scaffolding.
+    // Variables to track enabled interrupts and status shared between
+    // the ISR and DPC. The mask is stored in STATUS-register bit space.
     WDFINTERRUPT InterruptObject;
     ULONG InterruptMask;
     ULONG InterruptStatus;
 
-    // Controller driver lock. A wait lock (PASSIVE_LEVEL) is used so
-    // that transfers, which poll the controller, never spin at
-    // DISPATCH_LEVEL.
-    WDFWAITLOCK Lock;
+    // Controller driver lock. A spin lock is used so the lock can be
+    // acquired from the interrupt DPC (DISPATCH_LEVEL).
+    WDFSPINLOCK Lock;
 
     // The power setting callback handle
     PVOID pMonitorPowerSettingHandle;
@@ -247,6 +259,9 @@ struct PBC_REQUEST
 
     // Direction of the current transfer.
     SPB_TRANSFER_DIRECTION Direction;
+
+    // Phase of the interrupt-driven transfer state machine.
+    TRANSFER_PHASE Phase;
 
     // Time to delay before starting transfer.
     ULONG DelayInUs;

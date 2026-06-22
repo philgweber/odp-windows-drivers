@@ -2,7 +2,7 @@
 
 Copyright (c) Microsoft Corporation.  All rights reserved.
 
-Module Name: 
+Module Name:
 
     controller.h
 
@@ -27,50 +27,39 @@ Revision History:
 //
 
 VOID ControllerInitialize(
-    _In_  PPBC_DEVICE   pDevice);
+    _In_ PPBC_DEVICE pDevice);
 
 VOID ControllerUninitialize(
-    _In_  PPBC_DEVICE   pDevice);
+    _In_ PPBC_DEVICE pDevice);
 
-VOID
-ControllerConfigureForTransfer(
-    _In_  PPBC_DEVICE   pDevice,
-    _In_  PPBC_REQUEST  pRequest);
+VOID ControllerConfigureForTransfer(
+    _In_ PPBC_DEVICE pDevice,
+    _In_ PPBC_REQUEST pRequest);
 
-NTSTATUS
-ControllerTransferData(
-    _In_  PPBC_DEVICE   pDevice,
-    _In_  PPBC_REQUEST  pRequest);
-    
-VOID
-ControllerCompleteTransfer(
-    _In_  PPBC_DEVICE   pDevice,
-    _In_  PPBC_REQUEST  pRequest,
-    _In_  BOOLEAN       AbortSequence);
+VOID ControllerCompleteTransfer(
+    _In_ PPBC_DEVICE pDevice,
+    _In_ PPBC_REQUEST pRequest,
+    _In_ BOOLEAN AbortSequence);
 
-VOID
-ControllerEnableInterrupts(
-    _In_  PPBC_DEVICE   pDevice,
-    _In_  ULONG         InterruptMask);
+VOID ControllerEnableInterrupts(
+    _In_ PPBC_DEVICE pDevice,
+    _In_ ULONG InterruptMask);
 
-VOID
-ControllerDisableInterrupts(
-    _In_  PPBC_DEVICE   pDevice);
+VOID ControllerDisableInterrupts(
+    _In_ PPBC_DEVICE pDevice);
 
 ULONG
 ControllerGetInterruptStatus(
-    _In_  PPBC_DEVICE   pDevice,
-    _In_  ULONG         InterruptMask);
+    _In_ PPBC_DEVICE pDevice,
+    _In_ ULONG InterruptMask);
 
-VOID
-ControllerAcknowledgeInterrupts(
-    _In_  PPBC_DEVICE   pDevice,
-    _In_  ULONG         InterruptMask);
+VOID ControllerAcknowledgeInterrupts(
+    _In_ PPBC_DEVICE pDevice,
+    _In_ ULONG InterruptMask);
 
-VOID
-ControllerProcessInterrupts(
-    _In_  PPBC_DEVICE   pDevice,
-    _In_  PPBC_REQUEST  pRequest,
-    _In_  ULONG         InterruptStatus);
+VOID ControllerProcessInterrupts(
+    _In_ PPBC_DEVICE pDevice,
+    _In_ PPBC_REQUEST pRequest,
+    _In_ ULONG InterruptStatus);
 
 #endif
