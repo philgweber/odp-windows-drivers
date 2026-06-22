@@ -938,92 +938,40 @@ VOID OnOtherInCallerContext(
 
   Routine Description:
 
-    This routine preprocesses custom IO requests before the framework
-    places them in an IO queue. For requests using the SPB transfer list
-    format, it calls SpbRequestCaptureIoOtherTransferList to capture the
-    client's buffers.
+    This routine preprocesses custom IO requests in the caller's context
+    before the framework places them in an IO queue. This driver exposes
+    no custom IOCTLs, so it completes every request with
+    STATUS_NOT_SUPPORTED rather than capturing or enqueuing it.
 
   Arguments:
 
     SpbController - a handle to the framework device object
         representing an SPB controller
-    SpbRequest - a handle to the SPBREQUEST object
+    FxRequest - a handle to the WDFREQUEST object
 
   Return Value:
 
-    None.  The request is either completed or enqueued asynchronously.
+    None.  The request is always completed with STATUS_NOT_SUPPORTED.
 
 --*/
 {
     FuncEntry(TRACE_FLAG_SPBDDI);
 
-    NTSTATUS status;
+    UNREFERENCED_PARAMETER(SpbController);
 
     //
-    // Check for custom IOCTLs that this driver handles. If
-    // unrecognized mark as STATUS_NOT_SUPPORTED and complete.
+    // This driver exposes no custom IOCTLs, so reject every request that
+    // reaches the OnOther path with STATUS_NOT_SUPPORTED.
     //
 
-    WDF_REQUEST_PARAMETERS fxParams;
-    WDF_REQUEST_PARAMETERS_INIT(&fxParams);
+    Trace(
+        TRACE_LEVEL_ERROR,
+        TRACE_FLAG_SPBDDI,
+        "Unsupported custom IO request on FxRequest %p - %!STATUS!",
+        FxRequest,
+        STATUS_NOT_SUPPORTED);
 
-    WdfRequestGetParameters(FxRequest, &fxParams);
-
-    if ((fxParams.Type != WdfRequestTypeDeviceControl) &&
-        (fxParams.Type != WdfRequestTypeDeviceControlInternal))
-    {
-        status = STATUS_NOT_SUPPORTED;
-        Trace(
-            TRACE_LEVEL_ERROR,
-            TRACE_FLAG_SPBDDI,
-            "FxRequest %p is of unsupported request type - %!STATUS!",
-            FxRequest,
-            status);
-        goto exit;
-    }
-
-    //
-    // TODO: verify the driver supports this DeviceIoContol code,
-    //       otherwise mark as STATUS_NOT_SUPPORTED and complete.
-    //
-
-    //
-    // For custom IOCTLs that use the SPB transfer list format
-    // (i.e. sequence formatting), call SpbRequestCaptureIoOtherTransferList
-    // so that the driver can leverage other SPB DDIs for this request.
-    //
-
-    status = SpbRequestCaptureIoOtherTransferList((SPBREQUEST)FxRequest);
-
-    if (!NT_SUCCESS(status))
-    {
-        Trace(
-            TRACE_LEVEL_ERROR,
-            TRACE_FLAG_SPBDDI,
-            "Failed to capture transfer list for custom SpbRequest %p"
-            " - %!STATUS!",
-            FxRequest,
-            status);
-        goto exit;
-    }
-
-    //
-    // Preprocessing has succeeded, enqueue the request.
-    //
-
-    status = WdfDeviceEnqueueRequest(SpbController, FxRequest);
-
-    if (!NT_SUCCESS(status))
-    {
-        goto exit;
-    }
-
-exit:
-
-    if (!NT_SUCCESS(status))
-    {
-        WdfRequestComplete(FxRequest, status);
-    }
+    WdfRequestComplete(FxRequest, STATUS_NOT_SUPPORTED);
 
     FuncExit(TRACE_FLAG_SPBDDI);
 }
@@ -1040,9 +988,8 @@ VOID OnOther(
   Routine Description:
 
     This routine processes custom IO requests that are not natively
-    supported by the SPB framework extension. For requests using the
-    SPB transfer list format, SpbRequestCaptureIoOtherTransferList
-    must have been called in the driver's OnOtherInCallerContext routine.
+    supported by the SPB framework extension. This driver exposes no
+    custom IOCTLs, so it completes every request with STATUS_NOT_SUPPORTED.
 
   Arguments:
 
@@ -1056,42 +1003,32 @@ VOID OnOther(
 
   Return Value:
 
-    None.  The request is completed asynchronously.
+    None.  The request is always completed with STATUS_NOT_SUPPORTED.
 
 --*/
 {
     FuncEntry(TRACE_FLAG_SPBDDI);
 
-    NTSTATUS status = STATUS_SUCCESS;
-
     UNREFERENCED_PARAMETER(SpbController);
     UNREFERENCED_PARAMETER(SpbTarget);
-    UNREFERENCED_PARAMETER(SpbRequest);
     UNREFERENCED_PARAMETER(OutputBufferLength);
     UNREFERENCED_PARAMETER(InputBufferLength);
-    UNREFERENCED_PARAMETER(IoControlCode);
 
     //
-    // TODO: the driver should take the following steps
-    //
-    //    1. Verify this specific DeviceIoContol code is supported,
-    //       otherwise mark as STATUS_NOT_SUPPORTED and complete.
-    //
-    //    2. If this IOCTL uses SPB_TRANSFER_LIST and the driver has
-    //       called SpbRequestCaptureIoOtherTransferList previously,
-    //       validate the request format. The driver can make use of
-    //       SpbRequestGetTransferParameters to retrieve each transfer
-    //       descriptor.
-    //
-    //       If this IOCTL uses some proprietary buffer formating
-    //       instead of SPB_TRANSFER_LIST, validate appropriately.
-    //
-    //    3. Setup the device, target, and request contexts as necessary,
-    //       and program the hardware for the transfer.
+    // This driver exposes no custom IOCTLs, so reject every request that
+    // reaches this path with STATUS_NOT_SUPPORTED. (Unrecognized codes are
+    // already filtered in OnOtherInCallerContext; this is defense in depth.)
     //
 
-    // TODO: Make sure this request is being completed by QEMU I2C controller
-    SpbRequestComplete(SpbRequest, status);
+    Trace(
+        TRACE_LEVEL_ERROR,
+        TRACE_FLAG_SPBDDI,
+        "Unsupported IOCTL 0x%lx on SPBREQUEST %p - %!STATUS!",
+        IoControlCode,
+        SpbRequest,
+        STATUS_NOT_SUPPORTED);
+
+    SpbRequestComplete(SpbRequest, STATUS_NOT_SUPPORTED);
 
     FuncExit(TRACE_FLAG_SPBDDI);
 }
