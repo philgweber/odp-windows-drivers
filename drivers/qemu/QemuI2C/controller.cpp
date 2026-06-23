@@ -43,12 +43,12 @@ Revision History:
 
 const PBC_TRANSFER_SETTINGS g_TransferSettings[] =
     {
-        // Bus condition        IsStart  IsEnd
-        {BusConditionDontCare, FALSE, FALSE}, // SpbRequestSequencePositionInvalid
-        {BusConditionFree, TRUE, TRUE},       // SpbRequestSequencePositionSingle
-        {BusConditionFree, TRUE, FALSE},      // SpbRequestSequencePositionFirst
-        {BusConditionBusy, FALSE, FALSE},     // SpbRequestSequencePositionContinue
-        {BusConditionBusy, FALSE, TRUE}       // SpbRequestSequencePositionLast
+        // IsEnd
+        {FALSE}, // SpbRequestSequencePositionInvalid
+        {TRUE},  // SpbRequestSequencePositionSingle
+        {FALSE}, // SpbRequestSequencePositionFirst
+        {FALSE}, // SpbRequestSequencePositionContinue
+        {TRUE}   // SpbRequestSequencePositionLast
 };
 
 /////////////////////////////////////////////////
@@ -212,13 +212,12 @@ VOID ControllerConfigureForTransfer(
         TRACE_LEVEL_VERBOSE,
         TRACE_FLAG_TRANSFER,
         "Controller starting %s of %Iu bytes to address 0x%lx "
-        "(SPBREQUEST %p, WDFDEVICE %p, IsStart=%d, IsEnd=%d)",
+        "(SPBREQUEST %p, WDFDEVICE %p, IsEnd=%d)",
         read ? "read" : "write",
         pRequest->Length,
         pTarget->Settings.Address,
         pRequest->SpbRequest,
         pDevice->FxDevice,
-        pRequest->Settings.IsStart,
         pRequest->Settings.IsEnd);
 
     //

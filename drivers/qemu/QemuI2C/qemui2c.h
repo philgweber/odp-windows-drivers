@@ -119,12 +119,4 @@ bool TestAnyBits(
     return (V1 & V2) != 0;
 }
 
-FORCEINLINE
-bool TestAllBits(
-    _In_ ULONG V1,
-    _In_ ULONG V2)
-{
-    return ((V1 & V2) == V2);
-}
-
 #endif

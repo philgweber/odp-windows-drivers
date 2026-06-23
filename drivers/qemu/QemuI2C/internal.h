@@ -117,18 +117,8 @@ typedef struct PBC_TARGET_SETTINGS
 // Transfer settings.
 //
 
-typedef enum BUS_CONDITION
-{
-    BusConditionFree,
-    BusConditionBusy,
-    BusConditionDontCare
-} BUS_CONDITION,
-    *PBUS_CONDITION;
-
 typedef struct PBC_TRANSFER_SETTINGS
 {
-    BUS_CONDITION BusCondition;
-    BOOLEAN IsStart;
     BOOLEAN IsEnd;
 } PBC_TRANSFER_SETTINGS, *PPBC_TRANSFER_SETTINGS;
 
@@ -265,10 +255,6 @@ struct PBC_REQUEST
 
     // Time to delay before starting transfer.
     ULONG DelayInUs;
-
-    // Interrupt flag indicating data is ready to
-    // be transferred.
-    ULONG DataReadyFlag;
 
     // Bytes read/written in the current transfer.
     size_t Information;

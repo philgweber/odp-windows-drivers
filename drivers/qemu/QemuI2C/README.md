@@ -1,6 +1,6 @@
 ---
-page_type: sample
-description: "A KMDF SPB (I2C) controller driver for the QEMU ODP socket-backed I2C controller."
+page_type: reference
+description: "A KMDF SPB (I2C) controller driver for the ODP QEMU socket-backed I2C controller."
 languages:
 - cpp
 products:
@@ -8,9 +8,9 @@ products:
 - windows-wdk
 ---
 
-# QEMU I2C Sample Driver
+# ODP QEMU I2C Driver
 
-The QemuI2C sample is a KMDF controller driver that conforms to the [simple peripheral bus](https://docs.microsoft.com/windows-hardware/design/component-guidelines/simple-peripheral-bus--spb-) (SPB) device driver interface (DDI) and drives the QEMU "ODP socket-backed I2C controller" (`hw/odp/i2c-controller.c`). It started life as the in-box `SkeletonI2C` sample and has been filled in with the hardware-specific logic for that controller.
+QemuI2C is a KMDF controller driver that conforms to the [simple peripheral bus](https://docs.microsoft.com/windows-hardware/design/component-guidelines/simple-peripheral-bus--spb-) (SPB) device driver interface (DDI) and drives the ODP QEMU "socket-backed I2C controller" (`hw/odp/i2c-controller.c`). It started life as the in-box `SkeletonI2C` sample and has been filled in with the hardware-specific logic for that controller.
 
 It binds to the ACPI device with `_HID` `QEMU0001`, as published by the customized QEMU ARM virt ODP platform firmware. A HID-over-I2C peripheral (`_HID` `QEMU0002`, `_CID` `PNP0C50`) hangs off the controller and is serviced by the in-box `hidi2c.sys` through this driver.
 
@@ -53,7 +53,7 @@ Error mapping:
 
 ## Building and installing
 
-Build for ARM64 (the QEMU SBSA / arm-virt target) or x64 with the WDK/EWDK:
+Build for ARM64 (the QEMU arm-virt target) or x64 with the WDK/EWDK:
 
 ```
 msbuild qemui2c.sln /p:Configuration=Release /p:Platform=ARM64

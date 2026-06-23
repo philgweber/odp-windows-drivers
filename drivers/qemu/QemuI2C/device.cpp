@@ -46,9 +46,9 @@ OnPrepareHardware(
   Arguments:
 
     FxDevice - a handle to the framework device object
-    FxResourcesRaw - list of translated hardware resources that
+    FxResourcesRaw - list of raw hardware resources that
         the PnP manager has assigned to the device
-    FxResourcesTranslated - list of raw hardware resources that
+    FxResourcesTranslated - list of translated hardware resources that
         the PnP manager has assigned to the device
 
   Return Value:
@@ -146,9 +146,7 @@ OnReleaseHardware(
   Arguments:
 
     FxDevice - a handle to the framework device object
-    FxResourcesRaw - list of translated hardware resources that
-        the PnP manager has assigned to the device
-    FxResourcesTranslated - list of raw hardware resources that
+    FxResourcesTranslated - list of translated hardware resources that
         the PnP manager has assigned to the device
 
   Return Value:
@@ -551,8 +549,8 @@ VOID OnControllerLock(
   Routine Description:
 
     This routine is invoked whenever the controller is to
-    be locked for a single target. The request is only completed
-    if there is an error configuring the transfer.
+    be locked for a single target. The lock request is always
+    completed before returning.
 
   Arguments:
 
@@ -617,8 +615,8 @@ VOID OnControllerUnlock(
   Routine Description:
 
     This routine is invoked whenever the controller is to
-    be unlocked for a single target. The request is only completed
-    if there is an error configuring the transfer.
+    be unlocked for a single target. The unlock request is always
+    completed before returning.
 
   Arguments:
 
@@ -629,7 +627,7 @@ VOID OnControllerUnlock(
 
   Return Value:
 
-    None.  The request is completed asynchronously.
+    None.  The request is completed synchronously.
 
 --*/
 {
@@ -1464,15 +1462,16 @@ VOID PbcRequestConfigureForNonSequence(
 
   Arguments:
 
-    pDevice - a pointer to the PBC device context
-    pTarget - a pointer to the PBC target context
-    pRequest - a pointer to the PBC request context
-    Length - the number of bytes to read from the target
-    Direction - direction of the transfer
+    SpbController - a handle to the framework device object
+        representing an SPB controller
+    SpbTarget - a handle to the SPBTARGET object
+    SpbRequest - a handle to the SPBREQUEST object
+    Length - the number of bytes to transfer
 
   Return Value:
 
-    STATUS
+    None. The request is completed asynchronously, or synchronously on
+    a configuration failure.
 
 --*/
 {
@@ -1723,9 +1722,8 @@ VOID PbcRequestDoTransfer(
 
   Routine Description:
 
-    This routine either starts the delay timer or
-    kicks off the transfer depending on the request
-    parameters.
+    This routine applies any requested inter-transfer delay and then
+    kicks off the transfer.
 
   Arguments:
 
@@ -1734,7 +1732,7 @@ VOID PbcRequestDoTransfer(
 
   Return Value:
 
-    None. The request is completed asynchronously.
+    None. The transfer advances asynchronously via the interrupt DPC.
 
 --*/
 {
@@ -1783,7 +1781,7 @@ VOID PbcRequestComplete(
 
   Return Value:
 
-    None. The request is completed asynchronously.
+    None. Completes the SPB request inline.
 
 --*/
 {

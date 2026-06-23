@@ -26,43 +26,42 @@ Revision History:
 // WDF event callbacks.
 //
 
-EVT_WDF_DEVICE_PREPARE_HARDWARE         OnPrepareHardware;
-EVT_WDF_DEVICE_RELEASE_HARDWARE         OnReleaseHardware;
-EVT_WDF_DEVICE_D0_ENTRY                 OnD0Entry;
-EVT_WDF_DEVICE_D0_EXIT                  OnD0Exit;
-EVT_WDF_DEVICE_SELF_MANAGED_IO_INIT     OnSelfManagedIoInit;
-EVT_WDF_DEVICE_SELF_MANAGED_IO_CLEANUP  OnSelfManagedIoCleanup;
+EVT_WDF_DEVICE_PREPARE_HARDWARE OnPrepareHardware;
+EVT_WDF_DEVICE_RELEASE_HARDWARE OnReleaseHardware;
+EVT_WDF_DEVICE_D0_ENTRY OnD0Entry;
+EVT_WDF_DEVICE_D0_EXIT OnD0Exit;
+EVT_WDF_DEVICE_SELF_MANAGED_IO_INIT OnSelfManagedIoInit;
+EVT_WDF_DEVICE_SELF_MANAGED_IO_CLEANUP OnSelfManagedIoCleanup;
 
-EVT_WDF_INTERRUPT_ISR                   OnInterruptIsr;
-EVT_WDF_INTERRUPT_DPC                   OnInterruptDpc;
+EVT_WDF_INTERRUPT_ISR OnInterruptIsr;
+EVT_WDF_INTERRUPT_DPC OnInterruptDpc;
 
 //
 // Power framework event callbacks.
 //
 
 __drv_functionClass(POWER_SETTING_CALLBACK)
-_IRQL_requires_same_
-NTSTATUS
-OnMonitorPowerSettingCallback(
-    _In_                          LPCGUID SettingGuid,
-    _In_reads_bytes_(ValueLength) PVOID   Value,
-    _In_                          ULONG   ValueLength,
-    _Inout_opt_                   PVOID   Context
-   );
+    _IRQL_requires_same_
+    NTSTATUS
+    OnMonitorPowerSettingCallback(
+        _In_ LPCGUID SettingGuid,
+        _In_reads_bytes_(ValueLength) PVOID Value,
+        _In_ ULONG ValueLength,
+        _Inout_opt_ PVOID Context);
 
 //
 // SPBCx event callbacks.
 //
 
-EVT_SPB_TARGET_CONNECT               OnTargetConnect;
-EVT_SPB_CONTROLLER_LOCK              OnControllerLock;
-EVT_SPB_CONTROLLER_UNLOCK            OnControllerUnlock;
-EVT_SPB_CONTROLLER_READ              OnRead;
-EVT_SPB_CONTROLLER_WRITE             OnWrite;
-EVT_SPB_CONTROLLER_SEQUENCE          OnSequence;
+EVT_SPB_TARGET_CONNECT OnTargetConnect;
+EVT_SPB_CONTROLLER_LOCK OnControllerLock;
+EVT_SPB_CONTROLLER_UNLOCK OnControllerUnlock;
+EVT_SPB_CONTROLLER_READ OnRead;
+EVT_SPB_CONTROLLER_WRITE OnWrite;
+EVT_SPB_CONTROLLER_SEQUENCE OnSequence;
 
-EVT_WDF_IO_IN_CALLER_CONTEXT         OnOtherInCallerContext;
-EVT_SPB_CONTROLLER_OTHER             OnOther;
+EVT_WDF_IO_IN_CALLER_CONTEXT OnOtherInCallerContext;
+EVT_SPB_CONTROLLER_OTHER OnOther;
 
 //
 // PBC function prototypes.
@@ -70,40 +69,36 @@ EVT_SPB_CONTROLLER_OTHER             OnOther;
 
 NTSTATUS
 PbcTargetGetSettings(
-    _In_     PPBC_DEVICE             pDevice,
-    _In_     PVOID                   ConnectionParameters,
-    _Out_    PPBC_TARGET_SETTINGS    pSettings);
+    _In_ PPBC_DEVICE pDevice,
+    _In_ PVOID ConnectionParameters,
+    _Out_ PPBC_TARGET_SETTINGS pSettings);
 
 NTSTATUS
 PbcRequestValidate(
-    _In_     PPBC_REQUEST            pRequest);
+    _In_ PPBC_REQUEST pRequest);
 
-VOID
-PbcRequestConfigureForNonSequence(
-    _In_  WDFDEVICE                  SpbController,
-    _In_  SPBTARGET                  SpbTarget,
-    _In_  SPBREQUEST                 SpbRequest,
-    _In_  size_t                     Length);
+VOID PbcRequestConfigureForNonSequence(
+    _In_ WDFDEVICE SpbController,
+    _In_ SPBTARGET SpbTarget,
+    _In_ SPBREQUEST SpbRequest,
+    _In_ size_t Length);
 
 NTSTATUS
 PbcRequestConfigureForIndex(
-    _Inout_  PPBC_REQUEST            pRequest,
-    _In_     ULONG                   Index);
+    _Inout_ PPBC_REQUEST pRequest,
+    _In_ ULONG Index);
 
-VOID
-PbcRequestDoTransfer(
-    _In_     PPBC_DEVICE             pDevice,
-    _In_     PPBC_REQUEST            pRequest);
+VOID PbcRequestDoTransfer(
+    _In_ PPBC_DEVICE pDevice,
+    _In_ PPBC_REQUEST pRequest);
 
-VOID
-PbcRequestComplete(
-    _In_     PPBC_REQUEST            pRequest);
+VOID PbcRequestComplete(
+    _In_ PPBC_REQUEST pRequest);
 
 ULONG
 FORCEINLINE
 PbcDeviceGetInterruptMask(
-    _In_  PPBC_DEVICE                pDevice
-    )
+    _In_ PPBC_DEVICE pDevice)
 /*++
 
   Routine Description:
@@ -125,11 +120,10 @@ PbcDeviceGetInterruptMask(
 }
 
 VOID
-FORCEINLINE
-PbcDeviceSetInterruptMask(
-    _In_  PPBC_DEVICE                pDevice,
-    _In_  ULONG                      InterruptMask
-    )
+    FORCEINLINE
+    PbcDeviceSetInterruptMask(
+        _In_ PPBC_DEVICE pDevice,
+        _In_ ULONG InterruptMask)
 /*++
 
   Routine Description:
@@ -153,67 +147,12 @@ PbcDeviceSetInterruptMask(
         (LONG)InterruptMask);
 }
 
-VOID
-FORCEINLINE
-PbcDeviceAndInterruptMask(
-    _In_  PPBC_DEVICE                pDevice,
-    _In_  ULONG                      InterruptMask
-    )
-/*++
-
-  Routine Description:
-
-    This routine performs a logical and between the device
-    context's current interrupt mask and the input parameter.
-
-  Arguments:
-
-    pDevice - a pointer to the PBC device context
-    InterruptMask - new interrupt mask value to and
-
-  Return Value:
-
-    None.
-
---*/
-{
-    InterlockedAnd(
-        (PLONG)&pDevice->InterruptMask,
-        (LONG)InterruptMask);
-}
-
-size_t
-FORCEINLINE
-PbcRequestGetInfoRemaining(
-   _In_  PPBC_REQUEST  pRequest
-   )
-/*++
-
-  Routine Description:
-
-    This is a helper routine used to retrieve the
-    number of bytes remaining in the current transfer.
-
-  Arguments:
-
-    pRequest - a pointer to the PBC request context
-
-  Return Value:
-
-    Bytes remaining in request
-
---*/
-{
-    return (pRequest->Length - pRequest->Information);
-}
-
 NTSTATUS
 FORCEINLINE
 PbcRequestGetByte(
-   _In_  PPBC_REQUEST  pRequest,
-   _In_  size_t        Index,
-   _Out_ UCHAR*        pByte
-   )
+    _In_ PPBC_REQUEST pRequest,
+    _In_ size_t Index,
+    _Out_ UCHAR *pByte)
 /*++
 
   Routine Description:
@@ -254,7 +193,7 @@ PbcRequestGetByte(
 
             if (currentOffset < mdlByteCount)
             {
-                pBuffer = (PUCHAR) MmGetSystemAddressForMdlSafe(
+                pBuffer = (PUCHAR)MmGetSystemAddressForMdlSafe(
                     mdl,
                     NormalPagePriority | MdlMappingNoExecute);
 
@@ -287,10 +226,9 @@ PbcRequestGetByte(
 NTSTATUS
 FORCEINLINE
 PbcRequestSetByte(
-   _In_  PPBC_REQUEST  pRequest,
-   _In_  size_t        Index,
-   _In_  UCHAR         Byte
-   )
+    _In_ PPBC_REQUEST pRequest,
+    _In_ size_t Index,
+    _In_ UCHAR Byte)
 /*++
 
   Routine Description:
@@ -331,7 +269,7 @@ PbcRequestSetByte(
 
             if (currentOffset < mdlByteCount)
             {
-                pBuffer = (PUCHAR) MmGetSystemAddressForMdlSafe(
+                pBuffer = (PUCHAR)MmGetSystemAddressForMdlSafe(
                     mdl,
                     NormalPagePriority | MdlMappingNoExecute);
 
