@@ -72,6 +72,23 @@ QemuI2cPostCommand(
     pDevice->pRegisters->Data.Write(QEMU_I2C_MAKE_DATA(Command, Data));
 }
 
+//
+// Completes the request as a failed/aborted transfer: records the error
+// status, reports zero bytes for this (sub)transfer, and tears down the
+// sequence (AbortSequence = TRUE). Callers return / goto exit afterward.
+//
+
+static VOID
+ControllerAbortTransfer(
+    _In_ PPBC_DEVICE pDevice,
+    _In_ PPBC_REQUEST pRequest,
+    _In_ NTSTATUS Status)
+{
+    pRequest->Status = Status;
+    pRequest->Information = 0;
+    ControllerCompleteTransfer(pDevice, pRequest, TRUE);
+}
+
 /////////////////////////////////////////////////
 //
 // Controller initialization.
@@ -199,9 +216,7 @@ VOID ControllerConfigureForTransfer(
             "(WDFDEVICE %p)",
             pDevice->FxDevice);
 
-        pRequest->Status = STATUS_NOT_SUPPORTED;
-        pRequest->Information = 0;
-        ControllerCompleteTransfer(pDevice, pRequest, TRUE);
+        ControllerAbortTransfer(pDevice, pRequest, STATUS_NOT_SUPPORTED);
         goto exit;
     }
 
@@ -518,9 +533,7 @@ ControllerStartTxByte(
 
     if (!NT_SUCCESS(status))
     {
-        pRequest->Status = status;
-        pRequest->Information = 0;
-        ControllerCompleteTransfer(pDevice, pRequest, TRUE);
+        ControllerAbortTransfer(pDevice, pRequest, status);
         return;
     }
 
@@ -591,9 +604,7 @@ VOID ControllerProcessInterrupts(
 
     if (TestAnyBits(InterruptStatus, QEMU_I2C_STATUS_PROTO_ERR))
     {
-        pRequest->Status = STATUS_IO_DEVICE_ERROR;
-        pRequest->Information = 0;
-        ControllerCompleteTransfer(pDevice, pRequest, TRUE);
+        ControllerAbortTransfer(pDevice, pRequest, STATUS_IO_DEVICE_ERROR);
         goto exit;
     }
 
@@ -614,9 +625,7 @@ VOID ControllerProcessInterrupts(
                 pTarget->Settings.Address,
                 pDevice->FxDevice);
 
-            pRequest->Status = STATUS_NO_SUCH_DEVICE;
-            pRequest->Information = 0;
-            ControllerCompleteTransfer(pDevice, pRequest, TRUE);
+            ControllerAbortTransfer(pDevice, pRequest, STATUS_NO_SUCH_DEVICE);
             goto exit;
         }
 
@@ -679,9 +688,7 @@ VOID ControllerProcessInterrupts(
 
         if (TestAnyBits(InterruptStatus, QEMU_I2C_STATUS_NAK))
         {
-            pRequest->Status = STATUS_NO_SUCH_DEVICE;
-            pRequest->Information = 0;
-            ControllerCompleteTransfer(pDevice, pRequest, TRUE);
+            ControllerAbortTransfer(pDevice, pRequest, STATUS_NO_SUCH_DEVICE);
             goto exit;
         }
 
@@ -704,9 +711,7 @@ VOID ControllerProcessInterrupts(
 
             if (!NT_SUCCESS(st))
             {
-                pRequest->Status = st;
-                pRequest->Information = 0;
-                ControllerCompleteTransfer(pDevice, pRequest, TRUE);
+                ControllerAbortTransfer(pDevice, pRequest, st);
                 goto exit;
             }
 
@@ -738,9 +743,7 @@ VOID ControllerProcessInterrupts(
 
         if (TestAnyBits(InterruptStatus, QEMU_I2C_STATUS_NAK))
         {
-            pRequest->Status = STATUS_NO_SUCH_DEVICE;
-            pRequest->Information = 0;
-            ControllerCompleteTransfer(pDevice, pRequest, TRUE);
+            ControllerAbortTransfer(pDevice, pRequest, STATUS_NO_SUCH_DEVICE);
             goto exit;
         }
 
