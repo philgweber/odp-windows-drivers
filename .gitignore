@@ -4,3 +4,7 @@
 *.sys
 *.res
 *.cat
+
+# Output folders
+drivers/qemu/QemuI2C/arm64
+drivers/qemu/pl061gpio/arm64
